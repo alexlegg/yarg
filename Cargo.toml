@@ -1,0 +1,11 @@
+[package]
+name = "yarg"
+version = "0.1.0"
+authors = ["Alex Legg <alex@legg.info>"]
+
+[dependencies]
+time = "*"
+sdl2 = { version = "0.31.0", features = ["bundled"] }
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser", "libloaderapi", "memoryapi"] }
