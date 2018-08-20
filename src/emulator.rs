@@ -71,19 +71,21 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     let pc = cpu.get_reg16(Reg::PC)?;
 
-    /*
-  if pc == 0x100 {
-    emu.breakpoint = true;
-    return Ok(());
-  } */
+    /* if pc == 0x40 {
+		emu.breakpoint = true;
+		return Ok(());
+	} */
 
     let (inst_size, inst) = get_inst(&cpu)?;
-    cpu.set_pc(pc + inst_size)?;
 
-    /* if pc >= 0xe6 {
-    cpu.dump_regs();
-    println!("PC: {:#06x}, opcode: {:?}", pc, inst);
-  } */
+    /*
+    if cpu.get_reg16(Reg::PC) >= Ok(0x1a6) && cpu.get_reg16(Reg::PC) < Ok(0x1ba) {
+	    cpu.dump_regs();
+	    println!("PC: {:#06x}, opcode: {:?}", pc, inst);
+  	}
+  	*/
+
+    cpu.set_pc(pc + inst_size)?;
 
     emu.instruction_stream.pop_front();
     emu.instruction_stream.push_back((pc, inst));
@@ -325,11 +327,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 Address::Immediate(imm) => imm,
                 _ => unimplemented!("call address"),
             };
-            let cond = match condition {
-                Condition::Unconditional => true,
-                _ => unimplemented!("call condition"),
-            };
-            if cond {
+            if check_condition(cpu, condition) {
                 let next_pc = cpu.get_reg16(Reg::PC)?;
                 cpu.push_stack(next_pc)?;
                 //println!("Call from {:#06x} to {:#06x}", pc, addr);
@@ -356,6 +354,12 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::EnableInterrupts => {
+            cpu.interrupt_master_enable = true;
+            Ok(())
+        }
+        Operation::ReturnFromInterrupt => {
+            let addr = cpu.pop_stack()?;
+            cpu.set_pc(addr)?;
             cpu.interrupt_master_enable = true;
             Ok(())
         }
@@ -402,7 +406,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     }
 }
 
-pub fn get_operand_value8(cpu: &Cpu, addr: Address) -> Result<u8, String> {
+fn get_operand_value8(cpu: &Cpu, addr: Address) -> Result<u8, String> {
     match addr {
         Address::Data8(v) => Ok(v),
         Address::Indirect(r) => {
@@ -419,7 +423,7 @@ pub fn get_operand_value8(cpu: &Cpu, addr: Address) -> Result<u8, String> {
     }
 }
 
-pub fn set_operand_value8(cpu: &mut Cpu, addr: Address, val: u8) -> Result<(), String> {
+fn set_operand_value8(cpu: &mut Cpu, addr: Address, val: u8) -> Result<(), String> {
     match addr {
         Address::Indirect(r) => {
             let addr = cpu.get_reg16(r)?;
@@ -428,6 +432,15 @@ pub fn set_operand_value8(cpu: &mut Cpu, addr: Address, val: u8) -> Result<(), S
         Address::Register(r) => cpu.set_reg8(r, val),
         Address::Immediate(addr) => cpu.write_mem8(addr, val),
         _ => Err("Bad set_operand_value8".to_string()),
+    }
+}
+
+fn check_condition(cpu: &Cpu, condition: Condition) -> bool {
+    match condition {
+        Condition::Unconditional => true,
+        Condition::Zero => cpu.get_flag(Flag::Z),
+        Condition::NonZero => !cpu.get_flag(Flag::Z),
+        _ => unimplemented!("Unimplemented jump condition {:?}", condition),
     }
 }
 

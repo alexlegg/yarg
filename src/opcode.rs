@@ -30,6 +30,7 @@ pub enum Operation {
     Reset(Address),
     DisableInterrupts,
     EnableInterrupts,
+    ReturnFromInterrupt,
     RotateLeft(Address),
     RotateRight(Address),
     Swap(Address),
@@ -236,6 +237,12 @@ where
             let source = Address::Immediate(read_operand16(1)?);
             Ok((3, Operation::Jump(condition, source)))
         }
+        // CALL NZ,<addr16>
+        0xc4 => {
+            let condition = Condition::NonZero;
+            let source = Address::Immediate(read_operand16(1)?);
+            Ok((3, Operation::Call(condition, source)))
+        }
         // RET
         0xc9 => {
             let condition = Condition::Unconditional;
@@ -295,6 +302,8 @@ where
             let op = decode_prefixed(read_operand8(1)?)?;
             Ok((2, op))
         }
+        // RETI
+        0xd9 => Ok((1, Operation::ReturnFromInterrupt)),
         // LDH <addr8>, A
         0xe0 => {
             let destination = Address::Extended(read_operand8(1)?);

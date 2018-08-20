@@ -161,7 +161,7 @@ impl TrapHandler for Ppu {
         }
 
         if self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
-            return (Ok(Some(Interrupt::VBlank)));
+            return Ok(Some(Interrupt::VBlank));
         }
 
         Ok(None)

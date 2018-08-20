@@ -16,6 +16,16 @@ pub enum Interrupt {
     VBlank,
 }
 
+fn interrupt_handler_addr(irq: Interrupt) -> u16 {
+    match irq {
+        Interrupt::Joypad => 0x60,
+        Interrupt::LCDStat => 0x58,
+        Interrupt::Timer => 0x50,
+        Interrupt::Serial => 0x48,
+        Interrupt::VBlank => 0x40,
+    }
+}
+
 pub struct Cpu {
     pub a: u8,
     pub f: u8,
@@ -40,7 +50,6 @@ pub struct Cpu {
     bootrom: Vec<u8>,
     bootrom_enabled: bool,
 
-    rom_size: u16,
     rom: Vec<u8>,
 
     pub interrupt_master_enable: bool,
@@ -97,7 +106,6 @@ impl Cpu {
             hram: [0; 0x7f],
             bootrom: bootrom,
             bootrom_enabled: true,
-            rom_size: rom.len() as u16,
             rom: rom,
             interrupt_master_enable: false,
             interrupt_enable: 0,
@@ -130,11 +138,8 @@ impl Cpu {
     }
 
     pub fn set_pc(&mut self, addr: u16) -> Result<(), String> {
-        if addr >= self.rom_size {
-            return Err("Set PC beyond rom".to_string());
-        }
         self.pc = addr;
-        return Ok(());
+        Ok(())
     }
 
     pub fn get_flag(&self, flag: Flag) -> bool {
@@ -196,6 +201,7 @@ impl Cpu {
             Reg::DE => Ok(((self.d as u16) << 8) | (self.e as u16)),
             Reg::HL => Ok(((self.h as u16) << 8) | (self.l as u16)),
             Reg::PC => Ok(self.pc),
+            Reg::SP => Ok(self.sp),
             _ => Err("Bad get_reg16 register".to_string()),
         }
     }
@@ -316,7 +322,7 @@ impl Cpu {
             self.interrupt_enable = val;
             return Ok(());
         } else {
-            println!("Write to unknown IO address {:#06x}", addr);
+            //println!("Write to unknown IO address {:#06x}", addr);
             return Ok(());
         }
     }
@@ -370,6 +376,14 @@ impl Cpu {
             Some(Interrupt::LCDStat) => self.interrupt_flag |= 1 << 4,
             _ => (),
         };
+
+        if let Some(irq) = self.active_interrupt() {
+            let pc = self.pc;
+            self.push_stack(pc)?;
+            self.pc = interrupt_handler_addr(irq);
+            self.is_halted = false;
+            self.interrupt_master_enable = false;
+        }
         Ok(())
     }
 }
