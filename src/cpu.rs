@@ -291,7 +291,12 @@ impl Cpu {
         } else if addr >= 0xff80 && addr <= 0xfffe {
             self.hram[(addr - 0xff80) as usize] = val;
             return Ok(());
-        } else if addr >= 0xff40 && addr <= 0xff4b {
+        } else if addr >= 0xff40 && addr <= 0xff45 {
+            return self.ppu.write(addr, val);
+        } else if addr == 0xff46 {
+            // Handle DMA here
+            self.handle_dma_transfer((val as u16) << 8)
+        } else if addr >= 0xff47 && addr <= 0xff4b {
             return self.ppu.write(addr, val);
         } else if addr == 0xff50 {
             if val & 0b1 == 0b1 {
@@ -352,6 +357,14 @@ impl Cpu {
         return Ok(val);
     }
 
+    fn handle_dma_transfer(&mut self, addr : u16) -> Result<(), String> {
+        for off in 0..0x9f {
+            let val = self.read_mem8(addr + off)?;
+            self.write_mem8(0xfe00 + off, val)?;
+        }
+        Ok(())
+    }
+
     pub fn active_interrupt(&self) -> Option<Interrupt> {
         if !self.interrupt_master_enable {
             return None;
@@ -369,6 +382,16 @@ impl Cpu {
         return None;
     }
 
+    fn ack_interrupt(&mut self, irq : Interrupt) {
+        match irq {
+            Interrupt::Joypad => self.interrupt_flag &= !(1 << 4),
+            Interrupt::LCDStat => self.interrupt_flag &= !(1 << 3),
+            Interrupt::Timer => self.interrupt_flag &= !(1 << 2),
+            Interrupt::Serial => self.interrupt_flag &= !(1 << 1),
+            Interrupt::VBlank => self.interrupt_flag &= !(1 << 0),
+        }
+    }
+
     pub fn tick(&mut self, cycles: u16) -> Result<(), String> {
         let irq = self.ppu.tick(cycles)?;
         match irq {
@@ -378,9 +401,11 @@ impl Cpu {
         };
 
         if let Some(irq) = self.active_interrupt() {
+            println!("IRQ fired: {:?}", irq);
             let pc = self.pc;
             self.push_stack(pc)?;
             self.pc = interrupt_handler_addr(irq);
+            self.ack_interrupt(irq);
             self.is_halted = false;
             self.interrupt_master_enable = false;
         }

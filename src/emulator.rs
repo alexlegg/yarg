@@ -71,10 +71,11 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     let pc = cpu.get_reg16(Reg::PC)?;
 
-    /* if pc == 0x40 {
+    /*if pc == 0x359 {
 		emu.breakpoint = true;
+        println!("hit breakpoint");
 		return Ok(());
-	} */
+	}*/
 
     let (inst_size, inst) = get_inst(&cpu)?;
 
