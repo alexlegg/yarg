@@ -401,7 +401,6 @@ impl Cpu {
         };
 
         if let Some(irq) = self.active_interrupt() {
-            println!("IRQ fired: {:?}", irq);
             let pc = self.pc;
             self.push_stack(pc)?;
             self.pc = interrupt_handler_addr(irq);

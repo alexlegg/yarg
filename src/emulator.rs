@@ -225,20 +225,9 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 }
                 _ => Err("Bad jump source".to_string()),
             }?;
-            match condition {
-                Condition::Unconditional => cpu.set_pc(addr)?,
-                Condition::Zero => {
-                    if cpu.get_flag(Flag::Z) {
-                        cpu.set_pc(addr)?;
-                    }
-                }
-                Condition::NonZero => {
-                    if !cpu.get_flag(Flag::Z) {
-                        cpu.set_pc(addr)?;
-                    }
-                }
-                _ => unimplemented!("Unimplemented jump condition {:?}", condition),
-            };
+            if check_condition(cpu, condition) {
+                cpu.set_pc(addr)?;
+            }
             Ok(())
         }
         Operation::Complement => {
@@ -247,10 +236,11 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
         }
         Operation::Add(source) => {
             let val = get_operand_value8(cpu, source)?;
-            cpu.a = cpu.a.wrapping_add(val);
-            let z = cpu.a == 0;
-            cpu.set_flag(Flag::Z, z);
+            let (next_val, c) = cpu.a.overflowing_add(val);
+            cpu.a = next_val;
+            cpu.set_flag(Flag::Z, next_val == 0);
             cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, c);
             Ok(())
         }
         Operation::Add16(source) => {
@@ -259,19 +249,35 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 _ => panic!("Bad and16 source"),
             };
             let hl = cpu.get_reg16(Reg::HL)?;
-            cpu.set_reg16(Reg::HL, hl + val)?;
-            let z = cpu.a == 0;
-            cpu.set_flag(Flag::Z, z);
+            let (next_val, c) = hl.overflowing_add(val);
+            cpu.set_reg16(Reg::HL, next_val)?;
+            cpu.set_flag(Flag::Z, next_val == 0);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, c);
+            Ok(())
+        }
+        Operation::AddCarry(source) => {
+            let val = get_operand_value8(cpu, source)?;
+            let (next_val, mut c) = cpu.a.overflowing_add(val);
+            if cpu.get_flag(Flag::C) {
+                let (next_val, c1) = next_val.overflowing_add(1);
+                c |= c1;
+                cpu.a = next_val;
+            } else {
+                cpu.a = next_val;
+            }
+            cpu.set_flag(Flag::Z, next_val == 0);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, c);
             Ok(())
         }
         Operation::Sub(source) => {
             let val = get_operand_value8(cpu, source)?;
-            let (new_val, overflow) = cpu.a.overflowing_sub(val);
-            cpu.a = new_val;
-            let z = new_val == 0;
-            cpu.set_flag(Flag::Z, z);
+            let (next_val, c) = cpu.a.overflowing_sub(val);
+            cpu.a = next_val;
+            cpu.set_flag(Flag::Z, next_val == 0);
             cpu.set_flag(Flag::N, true);
-            cpu.set_flag(Flag::C, overflow);
+            cpu.set_flag(Flag::C, c);
             Ok(())
         }
         Operation::And(source) => {
@@ -282,6 +288,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             };
             let z = cpu.a == 0;
             cpu.set_flag(Flag::Z, z);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, false);
             Ok(())
         }
         Operation::Xor(source) => {
@@ -291,6 +299,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             };
             let z = cpu.a == 0;
             cpu.set_flag(Flag::Z, z);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, false);
             Ok(())
         }
         Operation::Or(source) => {
@@ -300,6 +310,16 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             };
             let z = cpu.a == 0;
             cpu.set_flag(Flag::Z, z);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, false);
+            Ok(())
+        }
+        Operation::Compare(source) => {
+            let src = get_operand_value8(cpu, source)?;
+            let (result, c) = cpu.a.overflowing_sub(src);
+            cpu.set_flag(Flag::Z, result == 0);
+            cpu.set_flag(Flag::N, true);
+            cpu.set_flag(Flag::C, c);
             Ok(())
         }
         Operation::Pop(destination) => {
@@ -315,13 +335,6 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 _ => unimplemented!("Load destination"),
             };
             cpu.push_stack(val)
-        }
-        Operation::Compare(source) => {
-            let src = get_operand_value8(cpu, source)?;
-            let z = cpu.a == src;
-            cpu.set_flag(Flag::Z, z);
-            cpu.set_flag(Flag::N, true);
-            Ok(())
         }
         Operation::Call(condition, address) => {
             let addr = match address {
@@ -374,13 +387,18 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             println!("Reset from {:#06x} to {:#06x}", pc, addr);
             cpu.set_pc(addr)
         }
-        Operation::RotateLeft(destination) => {
+        Operation::RotateLeft(copy_carry, destination) => {
             let val = get_operand_value8(cpu, destination)?;
             let mut val_next = val << 1;
-            if cpu.get_flag(Flag::C) {
-                val_next |= 1;
+            if copy_carry {
+                val_next |= val & 0b1;
+            } else {
+                if cpu.get_flag(Flag::C) {
+                    val_next |= 1;
+                }
             }
             cpu.set_flag(Flag::C, val & (1 << 7) > 0);
+            // This may or may not be wrong, docs are inconsistent.
             cpu.set_flag(Flag::Z, val_next == 0);
             set_operand_value8(cpu, destination, val_next)
         }
@@ -441,7 +459,8 @@ fn check_condition(cpu: &Cpu, condition: Condition) -> bool {
         Condition::Unconditional => true,
         Condition::Zero => cpu.get_flag(Flag::Z),
         Condition::NonZero => !cpu.get_flag(Flag::Z),
-        _ => unimplemented!("Unimplemented jump condition {:?}", condition),
+        Condition::Carry => cpu.get_flag(Flag::C),
+        Condition::NonCarry => !cpu.get_flag(Flag::C),
     }
 }
 

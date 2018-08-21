@@ -17,6 +17,7 @@ pub enum Operation {
     Jump(Condition, Address),
     Complement,
     Add(Address),
+    AddCarry(Address),
     Add16(Address),
     Sub(Address),
     And(Address),
@@ -31,8 +32,8 @@ pub enum Operation {
     DisableInterrupts,
     EnableInterrupts,
     ReturnFromInterrupt,
-    RotateLeft(Address),
-    RotateRight(Address),
+    RotateLeft(bool, Address),
+    RotateRight(bool, Address),
     Swap(Address),
     Bit(u8, Address),
     ResetBit(u8, Address),
@@ -155,6 +156,10 @@ where
             let source = Address::Data8(read_operand8(1)?);
             Ok((2, Operation::Load8(destination, source)))
         }
+        // RLCA
+        0x07 => {
+            Ok((1, Operation::RotateLeft(true, Address::Register(Reg::A))))
+        }
         // DEC <reg>
         0x05 | 0x0d | 0x15 | 0x1d | 0x25 | 0x2d | 0x35 | 0x3d => {
             let destination = opcode_reg(bits(5, 3, opcode));
@@ -178,7 +183,7 @@ where
         }
         // RLA
         // TODO: This needs to be distinct from RL A (a prefixed instruction) for timing reasons.
-        0x17 => Ok((1, Operation::RotateLeft(Address::Register(Reg::A)))),
+        0x17 => Ok((1, Operation::RotateLeft(false, Address::Register(Reg::A)))),
         // JR <rel8>
         0x18 => {
             let condition = Condition::Unconditional;
@@ -259,6 +264,11 @@ where
             let source = opcode_reg(opcode);
             Ok((1, Operation::Add(source)))
         }
+        // ADC <reg>
+        0x88...0x8f => {
+            let source = opcode_reg(opcode);
+            Ok((1, Operation::AddCarry(source)))
+        }
         // SUB <reg>
         0x90...0x97 => {
             let source = opcode_reg(opcode);
@@ -297,6 +307,12 @@ where
             let source = arithmetic16_source(opcode);
             Ok((1, Operation::Push(source)))
         }
+        // RST <fixed>
+        0xc7 | 0xcf | 0xd7 | 0xdf | 0xe7 | 0xef | 0xf7 | 0xff => {
+            // See Z80 Manual, Page 292.
+            let source = Address::Fixed((opcode & 0b00111000) as u16);
+            Ok((1, Operation::Reset(source)))
+        }
         // CB Prefix
         0xcb => {
             let op = decode_prefixed(read_operand8(1)?)?;
@@ -333,10 +349,6 @@ where
             let source = Address::Register(Reg::A);
             Ok((3, Operation::Load8(destination, source)))
         }
-        0xef => {
-            let source = Address::Fixed(0x28);
-            Ok((1, Operation::Reset(source)))
-        }
         // LDH A, <addr8>
         0xf0 => {
             let destination = Address::Register(Reg::A);
@@ -367,12 +379,12 @@ pub fn decode_prefixed(opcode: u8) -> Result<Operation, String> {
         // RL <reg8>
         0x10...0x17 => {
             let destination = opcode_reg(opcode);
-            Ok(Operation::RotateLeft(destination))
+            Ok(Operation::RotateLeft(false, destination))
         }
         // RR <reg8>
         0x18...0x1f => {
             let destination = opcode_reg(opcode);
-            Ok(Operation::RotateRight(destination))
+            Ok(Operation::RotateRight(false, destination))
         }
         // SWAP <reg8>
         0x30...0x37 => {
