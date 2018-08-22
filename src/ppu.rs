@@ -14,10 +14,10 @@ const V_BLANK_LINES: u64 = 10;
 const VERTICAL_LINE_CYCLES: u64 = HORIZONTAL_LINE_CYCLES * (SCREEN_HEIGHT + V_BLANK_LINES);
 
 const LCDC_DISPLAY_ENABLE: u8 = 1 << 7;
+const LCDC_BG_AND_WINDOW_TILE_DATA_SELECT: u8 = 1 << 4;
 /*
 const LCDC_WINDOW_TILE_MAP_DISPLAY_SELECT : u8 		= 1 << 6;
 const LCDC_WINDOW_DISPLAY_ENABLE: u8 							= 1 << 5;
-const LCDC_BG_AND_WINDOW_TILE_DATA_SELECT : u8		= 1 << 4;
 const LCDC_BG_TILE_MAP_DISPLAY_SELECT : u8				= 1 << 3;
 const LCDC_SPRITE_SIZE : u8												= 1 << 2;
 const LCDC_SPRITE_DISPLAY_ENABLE : u8							= 1 << 1;
@@ -67,8 +67,12 @@ impl Ppu {
         let y = screen_y.wrapping_add(self.scroll_x);
         let tile = self.bg_tile_map[(y >> 3) as usize][(x >> 3) as usize];
         let tile_y = ((y % 8) << 1) as usize;
-        let data0 = self.tiles[tile as usize][tile_y];
-        let data1 = self.tiles[tile as usize][tile_y];
+        let mut tile_num = tile as usize;
+        if self.lcdc & LCDC_BG_AND_WINDOW_TILE_DATA_SELECT == 0 && tile <= 0x80 {
+            tile_num += 0x100;
+        }
+        let data0 = self.tiles[tile_num][tile_y];
+        let data1 = self.tiles[tile_num][tile_y+1];
         let colour_val = (bit(data0, 7 - (x % 8)) << 1) | bit(data1, 7 - (x % 8));
         let colour = match colour_val {
             0b00 => 0xffffff,
@@ -107,7 +111,6 @@ impl Ppu {
 
 impl TrapHandler for Ppu {
     fn read(&self, addr: u16) -> Result<u8, String> {
-        //println!("Read from PPU {:#06x}", addr);
         match addr {
             0xff40 => Ok(self.lcdc),
             0xff42 => Ok(self.scroll_x),

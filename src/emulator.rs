@@ -94,7 +94,6 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     match inst {
         Operation::Nop => Ok(()),
         Operation::Halt => {
-            println!("halt");
             cpu.is_halted = true;
             Ok(())
         }
@@ -384,7 +383,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             };
             let next_pc = cpu.get_reg16(Reg::PC)?;
             cpu.push_stack(next_pc)?;
-            println!("Reset from {:#06x} to {:#06x}", pc, addr);
+            //println!("Reset from {:#06x} to {:#06x}", pc, addr);
             cpu.set_pc(addr)
         }
         Operation::RotateLeft(copy_carry, destination) => {
