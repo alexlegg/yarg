@@ -80,11 +80,11 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     let (inst_size, inst) = get_inst(&cpu)?;
 
     /*
-    if cpu.get_reg16(Reg::PC) >= Ok(0x1a6) && cpu.get_reg16(Reg::PC) < Ok(0x1ba) {
-	    cpu.dump_regs();
+    if pc > 0x100 {
+	    //cpu.dump_regs();
 	    println!("PC: {:#06x}, opcode: {:?}", pc, inst);
   	}
-  	*/
+    */
 
     cpu.set_pc(pc + inst_size)?;
 
@@ -401,6 +401,14 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::Z, val_next == 0);
             set_operand_value8(cpu, destination, val_next)
         }
+        Operation::ShiftLeft(destination) => {
+            let val = get_operand_value8(cpu, destination)?;
+            let val_next = val << 1;
+            cpu.set_flag(Flag::C, val & (1 << 7) > 0);
+            cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::N, false);
+            set_operand_value8(cpu, destination, val_next)
+        }
         Operation::Swap(destination) => match destination {
             Address::Register(r) => {
                 let val = cpu.get_reg8(r)?;
@@ -408,13 +416,14 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             }
             _ => Err("bad swap source".to_string()),
         },
-        Operation::ResetBit(b, destination) => match destination {
-            Address::Register(r) => {
-                let val = cpu.get_reg8(r)?;
-                cpu.set_reg8(r, val & !b)
-            }
-            _ => Err("Bad reset bit destination".to_string()),
-        },
+        Operation::ResetBit(b, destination) => {
+            let val = get_operand_value8(cpu, destination)?;
+            set_operand_value8(cpu, destination, val & !(1 << b))
+        }
+        Operation::SetBit(b, destination) => {
+            let val = get_operand_value8(cpu, destination)?;
+            set_operand_value8(cpu, destination, val | (1 << b))
+        }
         Operation::Bit(b, source) => {
             let val = get_operand_value8(cpu, source)?;
             cpu.set_flag(Flag::Z, val & (1 << b) == 0);

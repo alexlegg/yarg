@@ -1,4 +1,5 @@
 use ppu::Ppu;
+use timer::Timer;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Flag {
@@ -58,6 +59,7 @@ pub struct Cpu {
 
     // TODO refactor
     pub ppu: Ppu,
+    timer : Timer,
 
     // TODO refactor
     pub is_halted: bool,
@@ -111,6 +113,7 @@ impl Cpu {
             interrupt_enable: 0,
             interrupt_flag: 0,
             ppu: Ppu::new(),
+            timer: Timer::new(),
 
             is_halted: false,
         }
@@ -240,6 +243,8 @@ impl Cpu {
             return Ok(self.wram[0][(addr - 0xc000) as usize]);
         } else if addr >= 0xd000 && addr <= 0xdfff {
             return Ok(self.wram[self.wram_bank][(addr - 0xd000) as usize]);
+        } else if addr >= 0xff04 && addr <= 0xff07 {
+            return self.timer.read(addr);
         } else if addr >= 0xff40 && addr <= 0xff4b {
             return self.ppu.read(addr);
         } else if addr == 0xff00 {
@@ -310,9 +315,7 @@ impl Cpu {
             // Serial IO. Ignored.
             return Ok(());
         } else if addr >= 0xff04 && addr <= 0xff07 {
-            // Timer IO. Ignored
-            println!("Write to Timer register {:#06x}", addr);
-            return Ok(());
+            return self.timer.write(addr, val);
         } else if addr >= 0xff10 && addr <= 0xff26 {
             // Sound IO. Ignored
             return Ok(());
@@ -400,7 +403,16 @@ impl Cpu {
             _ => (),
         };
 
+        let irq = self.timer.tick(cycles)?;
+        match irq {
+            Some(Interrupt::Timer) => self.interrupt_flag |= 1 << 2,
+            _ => (),
+        };
+
         if let Some(irq) = self.active_interrupt() {
+            if let Interrupt::Timer = irq {
+                println!("timer interrupt");
+            }
             let pc = self.pc;
             self.push_stack(pc)?;
             self.pc = interrupt_handler_addr(irq);

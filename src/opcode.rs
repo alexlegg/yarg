@@ -34,9 +34,13 @@ pub enum Operation {
     ReturnFromInterrupt,
     RotateLeft(bool, Address),
     RotateRight(bool, Address),
+    ShiftLeft(Address),
+    ShiftRight(Address),
+    ShiftRightLogical(Address),
     Swap(Address),
     Bit(u8, Address),
     ResetBit(u8, Address),
+    SetBit(u8, Address),
 }
 
 // TODO rename to Operand
@@ -386,6 +390,11 @@ pub fn decode_prefixed(opcode: u8) -> Result<Operation, String> {
             let destination = opcode_reg(opcode);
             Ok(Operation::RotateRight(false, destination))
         }
+        // SLA <reg8>
+        0x20...0x27 => {
+            let destination = opcode_reg(opcode);
+            Ok(Operation::ShiftLeft(destination))
+        }
         // SWAP <reg8>
         0x30...0x37 => {
             let destination = opcode_reg(opcode);
@@ -400,7 +409,12 @@ pub fn decode_prefixed(opcode: u8) -> Result<Operation, String> {
         // RES b,<reg8>
         0x80...0xbf => {
             let destination = opcode_reg(opcode);
-            Ok(Operation::ResetBit(0, destination))
+            Ok(Operation::ResetBit(bits(5, 3, opcode), destination))
+        }
+        // SET b,<reg8>
+        0xc0...0xff => {
+            let destination = opcode_reg(opcode);
+            Ok(Operation::SetBit(bits(5, 3, opcode), destination))
         }
         _ => Err(format!("Unrecognised prefixed opcode: {:#04x}", opcode)),
     }
