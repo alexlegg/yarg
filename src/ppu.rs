@@ -14,13 +14,13 @@ const V_BLANK_LINES: u64 = 10;
 const VERTICAL_LINE_CYCLES: u64 = HORIZONTAL_LINE_CYCLES * (SCREEN_HEIGHT + V_BLANK_LINES);
 
 const LCDC_DISPLAY_ENABLE: u8 = 1 << 7;
-const LCDC_BG_AND_WINDOW_TILE_DATA_SELECT: u8 = 1 << 4;
+const LCDC_TILE_SELECT: u8 = 1 << 4;
+const LCDC_SPRITE_SIZE : u8 = 1 << 2;
+const LCDC_SPRITE_ENABLE : u8 = 1 << 1;
 /*
 const LCDC_WINDOW_TILE_MAP_DISPLAY_SELECT : u8 		= 1 << 6;
 const LCDC_WINDOW_DISPLAY_ENABLE: u8 							= 1 << 5;
 const LCDC_BG_TILE_MAP_DISPLAY_SELECT : u8				= 1 << 3;
-const LCDC_SPRITE_SIZE : u8												= 1 << 2;
-const LCDC_SPRITE_DISPLAY_ENABLE : u8							= 1 << 1;
 const LCDC_DISPLAY_PRIORITY : u8									= 1 << 0;
 */
 
@@ -40,8 +40,17 @@ pub struct Ppu {
     bg_tile_map: [[u8; 32]; 32],
     scroll_x: u8,
     scroll_y: u8,
+    sprite_attributes: [SpriteAttributeTable; 40],
 
     pub screen_buffer: [u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE],
+}
+
+#[derive(Copy, Clone, Debug)]
+struct SpriteAttributeTable {
+    y_position : u8,
+    x_position : u8,
+    tile_number : u8,
+    flags : u8,
 }
 
 impl Ppu {
@@ -54,6 +63,7 @@ impl Ppu {
             bg_tile_map: [[0; 32]; 32],
             scroll_x: 0,
             scroll_y: 0,
+            sprite_attributes: [SpriteAttributeTable::new(); 40],
             screen_buffer: [0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
         }
     }
@@ -62,26 +72,46 @@ impl Ppu {
         self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES
     }
 
-    fn draw_pixel(&mut self, screen_x: u8, screen_y: u8) {
-        let x = screen_x.wrapping_add(self.scroll_y);
-        let y = screen_y.wrapping_add(self.scroll_x);
-        let tile = self.bg_tile_map[(y >> 3) as usize][(x >> 3) as usize];
-        let tile_y = ((y % 8) << 1) as usize;
-        let mut tile_num = tile as usize;
-        if self.lcdc & LCDC_BG_AND_WINDOW_TILE_DATA_SELECT == 0 && tile <= 0x80 {
-            tile_num += 0x100;
+    fn get_bg_colour(&self, val : u8) -> u32 {
+        if val > 4 {
+            panic!("Bad value to get_colour");
         }
-        let data0 = self.tiles[tile_num][tile_y];
-        let data1 = self.tiles[tile_num][tile_y+1];
-        let colour_val = (bit(data0, 7 - (x % 8)) << 1) | bit(data1, 7 - (x % 8));
-        let colour = match colour_val {
+        match (self.bg_palette >> (val * 2)) & 0b11 {
             0b00 => 0xffffff,
             0b01 => 0xc0c0c0,
             0b10 => 0x969696,
             0b11 => 0x000000,
             _ => 0xffffff,
-        };
-        self.put_pixel(screen_x, screen_y, colour);
+        }
+    }
+
+    // TODO Don't do this pixel by pixel (obviously).
+    fn draw_pixel(&mut self, x: u8, y: u8) {
+        if self.lcdc & LCDC_SPRITE_ENABLE > 0 {
+            let mut colour = 0;
+            for sprite in self.sprite_attributes.iter() {
+                if sprite.y_position == 0 || sprite.y_position as u64 >= SCREEN_HEIGHT + 16 {
+                    continue;
+                }
+                if sprite.x_position == 0 || sprite.x_position as u64 >= SCREEN_WIDTH + 8 {
+                    continue;
+                }
+            }
+            // If we didn't find a sprite pixel, or it was transparent then fall through to background.
+        }
+        let bg_x = x.wrapping_add(self.scroll_y);
+        let bg_y = y.wrapping_add(self.scroll_x);
+        let tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize];
+        let tile_y = ((bg_y % 8) << 1) as usize;
+        let mut tile_num = tile as usize;
+        if self.lcdc & LCDC_TILE_SELECT == 0 && tile <= 0x80 {
+            tile_num += 0x100;
+        }
+        let data0 = self.tiles[tile_num][tile_y];
+        let data1 = self.tiles[tile_num][tile_y+1];
+        let colour_val = (bit(data1, 7 - (bg_x % 8)) << 1) | bit(data0, 7 - (bg_x % 8));
+        let colour = self.get_bg_colour(colour_val);
+        self.put_pixel(x, y, colour);
     }
 
     fn put_pixel(&mut self, x: u8, y: u8, colour: u32) {
@@ -113,6 +143,15 @@ impl TrapHandler for Ppu {
     fn read(&self, addr: u16) -> Result<u8, String> {
         match addr {
             0xff40 => Ok(self.lcdc),
+            0xff41 => {
+                let val = match self.mode() {
+                    Mode::HBlank => 0b00,
+                    Mode::VBlank => 0b01,
+                    Mode::OamSearch => 0b10,
+                    Mode::PixelTransfer => 0b11,
+                };
+                Ok(val)
+            }
             0xff42 => Ok(self.scroll_x),
             0xff43 => Ok(self.scroll_y),
             0xff44 => Ok((self.bad_timer % (SCREEN_HEIGHT + V_BLANK_LINES)) as u8),
@@ -124,17 +163,18 @@ impl TrapHandler for Ppu {
         if addr == 0xff40 {
             println!("write to LCDC {:x}", val);
             self.lcdc = val;
+        } else if addr == 0xff41 {
+            println!("write to STAT {:x}", val);
         } else if addr == 0xff42 {
             self.scroll_x = val;
         } else if addr == 0xff43 {
             self.scroll_y = val;
         } else if addr == 0xff47 {
+            println!("bg palette: {:x}", val);
             self.bg_palette = val;
         } else if addr >= 0xff40 {
             println!("Write to PPU {:#06x} {:#04x}", addr, val);
-        }
-
-        if addr >= 0x8000 && addr <= 0x97ff {
+        } else if addr >= 0x8000 && addr <= 0x97ff {
             let tile_num = ((addr - 0x8000) >> 4) as usize;
             let byte_num = (addr % 16) as usize;
             self.tiles[tile_num][byte_num] = val;
@@ -142,6 +182,15 @@ impl TrapHandler for Ppu {
             let row = ((addr - 0x9800) >> 5) as usize;
             let col = ((addr - 0x9800) % 32) as usize;
             self.bg_tile_map[row][col] = val;
+        } else if addr >= 0xfe00 && addr <= 0xfe9f {
+            let sprite = (addr as usize - 0xfe00) / 4;
+            match (addr - 0xfe00) % 4 {
+                0 => self.sprite_attributes[sprite].y_position = val,
+                1 => self.sprite_attributes[sprite].x_position = val,
+                2 => self.sprite_attributes[sprite].tile_number = val,
+                3 => self.sprite_attributes[sprite].flags = val,
+                _ => unreachable!("Unreachable in PPU write"),
+            };
         }
         Ok(())
     }
@@ -168,6 +217,17 @@ impl TrapHandler for Ppu {
         }
 
         Ok(None)
+    }
+}
+
+impl SpriteAttributeTable {
+    fn new() -> SpriteAttributeTable {
+        SpriteAttributeTable {
+            y_position: 0,
+            x_position: 0,
+            tile_number: 0,
+            flags: 0,
+        }
     }
 }
 
