@@ -49,7 +49,7 @@ impl Emulator {
         return &self.cpu.ppu.screen_buffer;
     }
 
-    pub fn should_draw(&self) -> bool {
+    pub fn should_draw(&mut self) -> bool {
         return self.cpu.ppu.should_draw();
     }
 }
@@ -61,7 +61,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     let cpu = &mut emu.cpu;
 
-    cpu.active_interrupt();
+    cpu.check_for_interrupt()?;
 
     // Tick once here. Every instruction will take at least one cycle for
     // reading the value at PC.
@@ -82,7 +82,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     let (inst_size, inst) = get_inst(&cpu)?;
 
     /*
-    if (pc >= 0x205d && pc <= 0x2071) || pc >= 0x7ff0 {
+    if pc > 0 {
 	    cpu.dump_regs();
 	    println!("{:#06x}: {:?}", pc, inst);
   	}
@@ -100,29 +100,15 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::Load8(destination, source) => {
-            let src = get_operand_value8(cpu, source)?;
-            match destination {
-                Address::Register(r) => cpu.set_reg8(r, src)?,
-                Address::Immediate(addr) => cpu.write_mem8(addr, src)?,
-                Address::Indirect(Reg::C) => {
-                    let addr = 0xff00 | (cpu.get_reg8(Reg::C)? as u16);
-                    cpu.write_mem8(addr, src)?
-                }
-                Address::Indirect(r) => {
-                    let addr = cpu.get_reg16(r)?;
-                    cpu.write_mem8(addr, src)?
-                }
-                Address::Extended(e) => {
-                    let addr: u16 = 0xff00 | (e as u16);
-                    cpu.write_mem8(addr, src)?;
-                }
-                _ => unimplemented!("Load destination"),
-            }
-            Ok(())
+            let src = cpu.get_address8(source)?;
+            cpu.set_address8(destination, src)
         }
         Operation::Load16(destination, source) => {
             let src = match source {
-                Address::Data16(imm) => imm,
+                Address::Data16(imm) => {
+                    cpu.tick(2)?;
+                    imm
+                }
                 _ => unimplemented!("Load source"),
             };
             match destination {
@@ -131,102 +117,83 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             }
         }
         Operation::LoadIncrement(destination, source) => {
-            let src = match source {
-                Address::Register(r) => cpu.get_reg8(r)?,
-                Address::Indirect(Reg::HL) => {
-                    let addr = cpu.get_reg16(Reg::HL)?;
-                    cpu.read_mem8(addr)?
-                }
-                _ => unimplemented!("LDI source"),
-            };
-            match destination {
-                Address::Register(r) => cpu.set_reg8(r, src)?,
-                Address::Indirect(Reg::HL) => {
-                    let addr = cpu.get_reg16(Reg::HL)?;
-                    cpu.write_mem8(addr, src)?;
-                }
-                _ => unimplemented!("LDI dest"),
-            }
-            let hl = cpu.get_reg16(Reg::HL)?;
-            // TODO: Fix overflow
-            cpu.set_reg16(Reg::HL, hl + 1)?;
+            let src = cpu.get_address8(source)?;
+            cpu.set_address8(destination, src)?;
+            let hl = cpu.get_reg16(Reg::HL)?.wrapping_add(1);
+            cpu.set_reg16(Reg::HL, hl)?;
             // TODO: Check if zero flag should actually be set here.
-            cpu.set_flag(Flag::Z, hl + 1 == 0);
+            cpu.set_flag(Flag::Z, hl == 0);
             Ok(())
         }
         Operation::LoadDecrement(destination, source) => {
-            let src = match source {
-                Address::Register(r) => cpu.get_reg8(r)?,
-                _ => unimplemented!("LDD source"),
-            };
-            let addr = match destination {
-                Address::Indirect(Reg::HL) => cpu.get_reg16(Reg::HL)?,
-                _ => unimplemented!("LDD dest"),
-            };
-            cpu.write_mem8(addr, src)?;
-            // TODO: Fix underflow
-            cpu.set_reg16(Reg::HL, addr - 1)?;
+            let src = cpu.get_address8(source)?;
+            cpu.set_address8(destination, src)?;
+            let hl = cpu.get_reg16(Reg::HL)?.wrapping_sub(1);
+            cpu.set_reg16(Reg::HL, hl)?;
             // TODO: Check if zero flag should actually be set here.
-            cpu.set_flag(Flag::Z, addr - 1 == 0);
+            cpu.set_flag(Flag::Z, hl == 0);
             Ok(())
         }
         Operation::Increment(destination) => {
-            let val0 = get_operand_value8(cpu, destination)?;
-            let (val1, _carry) = val0.overflowing_add(1);
-            set_operand_value8(cpu, destination, val1)?;
+            let val0 = cpu.get_address8(destination)?;
+            let val1 = val0.wrapping_add(1);
+            cpu.set_address8(destination, val1)?;
             cpu.set_flag(Flag::Z, val1 == 0);
             cpu.set_flag(Flag::N, false);
             Ok(())
         }
         Operation::Increment16(destination) => {
+            cpu.tick(1)?;
             let reg = match destination {
                 Address::Register(r) => Ok(r),
                 _ => Err("Increment has bad destination".to_string()),
             }?;
-            let (v, _) = cpu.get_reg16(reg)?.overflowing_add(1);
+            let v = cpu.get_reg16(reg)?.wrapping_add(1);
             cpu.set_reg16(reg, v)?;
             cpu.set_flag(Flag::Z, v == 0);
+            cpu.set_flag(Flag::N, false);
             Ok(())
         }
         Operation::Decrement(destination) => {
-            let v = match destination {
-                Address::Register(r) => {
-                    let v = (cpu.get_reg8(r)?).wrapping_sub(1);
-                    cpu.set_reg8(r, v)?;
-                    Ok(v)
-                }
-                Address::Indirect(r) => {
-                    let addr = cpu.get_reg16(r)?;
-                    let v = (cpu.read_mem8(addr)?).wrapping_sub(1);
-                    cpu.write_mem8(addr, v)?;
-                    Ok(v)
-                }
-                _ => Err("Decrement has bad destination".to_string()),
-            }?;
-            cpu.set_flag(Flag::Z, v == 0);
+            let val0 = cpu.get_address8(destination)?;
+            let val1 = val0.wrapping_sub(1);
+            cpu.set_address8(destination, val1)?;
+            cpu.set_flag(Flag::Z, val1 == 0);
+            cpu.set_flag(Flag::N, false);
             Ok(())
         }
         Operation::Decrement16(destination) => {
+            cpu.tick(1)?;
             let reg = match destination {
                 Address::Register(r) => Ok(r),
                 _ => Err("Increment has bad destination".to_string()),
             }?;
-            let (v, _) = cpu.get_reg16(reg)?.overflowing_sub(1);
+            let v = cpu.get_reg16(reg)?.wrapping_sub(1);
             cpu.set_reg16(reg, v)?;
             cpu.set_flag(Flag::Z, v == 0);
+            cpu.set_flag(Flag::N, false);
             Ok(())
         }
         Operation::Jump(condition, source) => {
             let addr: u16 = match source {
-                Address::Immediate(imm) => Ok(imm),
+                Address::Immediate(imm) => {
+                    cpu.tick(2)?;
+                    Ok(imm)
+                }
                 Address::Register(r) => cpu.get_reg16(r),
                 Address::Relative(rel) => {
+                    cpu.tick(1)?;
                     let e: i8 = (rel as i8) + 2;
                     Ok(((pc as i16) + (e as i16)) as u16)
                 }
                 _ => Err("Bad jump source".to_string()),
             }?;
-            if check_condition(cpu, condition) {
+            if cpu.check_condition(condition) {
+                // JP (HL) doesn't have an extra tick on successful jump.
+                match source {
+                    Address::Register(_) => Ok(()),
+                    _ => cpu.tick(1),
+                }?;
                 cpu.set_pc(addr)?;
             }
             Ok(())
@@ -236,7 +203,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::Add(source) => {
-            let val = get_operand_value8(cpu, source)?;
+            let val = cpu.get_address8(source)?;
             let (next_val, c) = cpu.a.overflowing_add(val);
             cpu.a = next_val;
             cpu.set_flag(Flag::Z, next_val == 0);
@@ -245,6 +212,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::Add16(source) => {
+            cpu.tick(1)?;
             let val = match source {
                 Address::Register(r) => cpu.get_reg16(r)?,
                 _ => panic!("Bad and16 source"),
@@ -258,7 +226,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::AddCarry(source) => {
-            let val = get_operand_value8(cpu, source)?;
+            let val = cpu.get_address8(source)?;
             let (next_val, mut c) = cpu.a.overflowing_add(val);
             if cpu.get_flag(Flag::C) {
                 let (next_val, c1) = next_val.overflowing_add(1);
@@ -273,7 +241,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::Sub(source) => {
-            let val = get_operand_value8(cpu, source)?;
+            let val = cpu.get_address8(source)?;
             let (next_val, c) = cpu.a.overflowing_sub(val);
             cpu.a = next_val;
             cpu.set_flag(Flag::Z, next_val == 0);
@@ -316,7 +284,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::Compare(source) => {
-            let src = get_operand_value8(cpu, source)?;
+            let src = cpu.get_address8(source)?;
             let (result, c) = cpu.a.overflowing_sub(src);
             cpu.set_flag(Flag::Z, result == 0);
             cpu.set_flag(Flag::N, true);
@@ -331,35 +299,32 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             }
         }
         Operation::Push(source) => {
+            cpu.tick(1)?;
             let val = match source {
                 Address::Register(r) => cpu.get_reg16(r)?,
                 _ => unimplemented!("Load destination"),
             };
             cpu.push_stack(val)
         }
-        Operation::Call(condition, address) => {
-            let addr = match address {
-                Address::Immediate(imm) => imm,
-                _ => unimplemented!("call address"),
-            };
-            if check_condition(cpu, condition) {
+        Operation::Call(condition, addr) => {
+            cpu.tick(2)?;
+            if cpu.check_condition(condition) {
                 let next_pc = cpu.get_reg16(Reg::PC)?;
                 cpu.push_stack(next_pc)?;
-                //println!("Call from {:#06x} to {:#06x}", pc, addr);
+                cpu.tick(1)?;
                 cpu.set_pc(addr)?;
             }
             Ok(())
         }
         Operation::Return(condition) => {
-            let cond = match condition {
-                Condition::Unconditional => true,
-                Condition::Zero => cpu.get_flag(Flag::Z),
-                Condition::NonZero => !cpu.get_flag(Flag::Z),
-                _ => unimplemented!("return condition"),
-            };
-            if cond {
+            // Conditional RETs take one extra tick.
+            match condition {
+                Condition::Unconditional => Ok(()),
+                _ => cpu.tick(1),
+            }?;
+            if cpu.check_condition(condition) {
                 let addr = cpu.pop_stack()?;
-                //println!("Return from {:#06x} to {:#06x}", pc, addr);
+                cpu.tick(1)?;
                 cpu.set_pc(addr)?;
             }
             Ok(())
@@ -375,21 +340,20 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
         Operation::ReturnFromInterrupt => {
             let addr = cpu.pop_stack()?;
             cpu.set_pc(addr)?;
+            cpu.tick(1)?;
             cpu.interrupt_master_enable = true;
             Ok(())
         }
-        Operation::Reset(source) => {
-            let addr = match source {
-                Address::Fixed(v) => v,
-                _ => unimplemented!("reset source"),
-            };
+        Operation::Reset(addr) => {
+            cpu.tick(1)?;
             let next_pc = cpu.get_reg16(Reg::PC)?;
             cpu.push_stack(next_pc)?;
-            //println!("Reset from {:#06x} to {:#06x}", pc, addr);
             cpu.set_pc(addr)
         }
+
         Operation::RotateLeft(copy_carry, destination) => {
-            let val = get_operand_value8(cpu, destination)?;
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
             let mut val_next = val << 1;
             if copy_carry {
                 val_next |= val & 0b1;
@@ -401,76 +365,43 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::C, val & (1 << 7) > 0);
             // This may or may not be wrong, docs are inconsistent.
             cpu.set_flag(Flag::Z, val_next == 0);
-            set_operand_value8(cpu, destination, val_next)
+            cpu.set_address8(destination, val_next)
         }
         Operation::ShiftLeft(destination) => {
-            let val = get_operand_value8(cpu, destination)?;
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
             let val_next = val << 1;
             cpu.set_flag(Flag::C, val & (1 << 7) > 0);
             cpu.set_flag(Flag::Z, val_next == 0);
             cpu.set_flag(Flag::N, false);
-            set_operand_value8(cpu, destination, val_next)
+            cpu.set_address8(destination, val_next)
         }
-        Operation::Swap(destination) => match destination {
-            Address::Register(r) => {
-                let val = cpu.get_reg8(r)?;
-                cpu.set_reg8(r, ((val & 0x0f) << 4) | ((val & 0xf0) >> 4))
-            }
-            _ => Err("bad swap source".to_string()),
-        },
+        Operation::Swap(destination) => {
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
+            let val_next = ((val & 0x0f) << 4) | ((val & 0xf0) >> 4);
+            cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::C, false);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_address8(destination, val_next)
+        }
         Operation::ResetBit(b, destination) => {
-            let val = get_operand_value8(cpu, destination)?;
-            set_operand_value8(cpu, destination, val & !(1 << b))
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
+            cpu.set_address8(destination, val & !(1 << b))
         }
         Operation::SetBit(b, destination) => {
-            let val = get_operand_value8(cpu, destination)?;
-            set_operand_value8(cpu, destination, val | (1 << b))
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
+            cpu.set_address8(destination, val | (1 << b))
         }
         Operation::Bit(b, source) => {
-            let val = get_operand_value8(cpu, source)?;
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(source)?;
             cpu.set_flag(Flag::Z, val & (1 << b) == 0);
             Ok(())
         }
         _ => Err("Unrecognised instruction".to_string()),
-    }
-}
-
-fn get_operand_value8(cpu: &Cpu, addr: Address) -> Result<u8, String> {
-    match addr {
-        Address::Data8(v) => Ok(v),
-        Address::Indirect(r) => {
-            let addr = cpu.get_reg16(r)?;
-            cpu.read_mem8(addr)
-        }
-        Address::Register(r) => cpu.get_reg8(r),
-        Address::Extended(e) => {
-            let addr: u16 = 0xff00 | (e as u16);
-            cpu.read_mem8(addr)
-        }
-        Address::Immediate(addr) => cpu.read_mem8(addr),
-        _ => Err("Bad get_operand_value8".to_string()),
-    }
-}
-
-fn set_operand_value8(cpu: &mut Cpu, addr: Address, val: u8) -> Result<(), String> {
-    match addr {
-        Address::Indirect(r) => {
-            let addr = cpu.get_reg16(r)?;
-            cpu.write_mem8(addr, val)
-        }
-        Address::Register(r) => cpu.set_reg8(r, val),
-        Address::Immediate(addr) => cpu.write_mem8(addr, val),
-        _ => Err("Bad set_operand_value8".to_string()),
-    }
-}
-
-fn check_condition(cpu: &Cpu, condition: Condition) -> bool {
-    match condition {
-        Condition::Unconditional => true,
-        Condition::Zero => cpu.get_flag(Flag::Z),
-        Condition::NonZero => !cpu.get_flag(Flag::Z),
-        Condition::Carry => cpu.get_flag(Flag::C),
-        Condition::NonCarry => !cpu.get_flag(Flag::C),
     }
 }
 

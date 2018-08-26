@@ -27,9 +27,9 @@ pub enum Operation {
     Pop(Address),
     Push(Address),
     Compare(Address),
-    Call(Condition, Address),
+    Call(Condition, u16),
     Return(Condition),
-    Reset(Address),
+    Reset(u16),
     DisableInterrupts,
     EnableInterrupts,
     ReturnFromInterrupt,
@@ -54,7 +54,7 @@ pub enum Address {
     Immediate(u16),
     Relative(u8),
     Extended(u8),
-    Fixed(u16),
+    ExtendedIndirect(Reg),
 }
 
 impl fmt::Debug for Address {
@@ -66,8 +66,8 @@ impl fmt::Debug for Address {
             Address::Data16(d) => write!(f, "${:#06x}", d),
             Address::Immediate(i) => write!(f, "${:#06x}", i),
             Address::Relative(r) => write!(f, "+{:#04x}", *r as i8),
-            Address::Extended(e) => write!(f, "$0x00{:02x}", e),
-            Address::Fixed(a) => write!(f, "${:#06x}", a),
+            Address::Extended(e) => write!(f, "$0xff00 + {:02x}", e),
+            Address::ExtendedIndirect(r) => write!(f, "$0xff00 + ({:?})", r),
         }
     }
 }
@@ -263,8 +263,7 @@ where
         // CALL NZ,<addr16>
         0xc4 => {
             let condition = Condition::NonZero;
-            let source = Address::Immediate(read_operand16(1)?);
-            Ok((3, Operation::Call(condition, source)))
+            Ok((3, Operation::Call(condition, read_operand16(1)?)))
         }
         // RET
         0xc9 => {
@@ -274,8 +273,7 @@ where
         // CALL <addr16>
         0xcd => {
             let condition = Condition::Unconditional;
-            let source = Address::Immediate(read_operand16(1)?);
-            Ok((3, Operation::Call(condition, source)))
+            Ok((3, Operation::Call(condition, read_operand16(1)?)))
         }
         // ADD <reg>
         0x80...0x87 => {
@@ -328,8 +326,7 @@ where
         // RST <fixed>
         0xc7 | 0xcf | 0xd7 | 0xdf | 0xe7 | 0xef | 0xf7 | 0xff => {
             // See Z80 Manual, Page 292.
-            let source = Address::Fixed((opcode & 0b00111000) as u16);
-            Ok((1, Operation::Reset(source)))
+            Ok((1, Operation::Reset((opcode & 0b00111000) as u16)))
         }
         // CB Prefix
         0xcb => {
@@ -346,7 +343,7 @@ where
         }
         // LDH (C), A
         0xe2 => {
-            let destination = Address::Indirect(Reg::C);
+            let destination = Address::ExtendedIndirect(Reg::C);
             let source = Address::Register(Reg::A);
             Ok((1, Operation::Load8(destination, source)))
         }

@@ -45,6 +45,7 @@ pub struct Ppu {
     sprite_palette1: u8,
 
     pub screen_buffer: [u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE],
+    draw_buffer: bool,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -69,11 +70,17 @@ impl Ppu {
             sprite_palette0: 0,
             sprite_palette1: 0,
             screen_buffer: [0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
+            draw_buffer: false,
         }
     }
 
-    pub fn should_draw(&self) -> bool {
-        self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES
+    pub fn should_draw(&mut self) -> bool {
+        if self.draw_buffer {
+            self.draw_buffer = false;
+            true
+        } else {
+            false
+        }
     }
 
     // TODO Don't do this pixel by pixel (obviously).
@@ -176,7 +183,7 @@ impl TrapHandler for Ppu {
             }
             0xff42 => Ok(self.scroll_x),
             0xff43 => Ok(self.scroll_y),
-            0xff44 => Ok((self.bad_timer % (SCREEN_HEIGHT + V_BLANK_LINES)) as u8),
+            0xff44 => Ok((self.bad_timer / HORIZONTAL_LINE_CYCLES) as u8),
             0xff47 => Ok(self.bg_palette),
             0xff48 => Ok(self.sprite_palette0),
             0xff49 => Ok(self.sprite_palette1),
@@ -227,24 +234,28 @@ impl TrapHandler for Ppu {
         if self.lcdc & LCDC_DISPLAY_ENABLE == 0 {
             return Ok(None);
         }
-        self.bad_timer += cycles as u64;
-        self.bad_timer %= VERTICAL_LINE_CYCLES;
+        let mut interrupt = None;
+        for _ in 0..cycles {
+            self.bad_timer += 1;
+            self.bad_timer %= VERTICAL_LINE_CYCLES;
 
-        if let Mode::PixelTransfer = self.mode() {
-            let x = ((self.bad_timer % HORIZONTAL_LINE_CYCLES) - OAM_SEARCH_CYCLES) * 4;
-            let y = self.bad_timer / HORIZONTAL_LINE_CYCLES;
-            for i in x..(x + 4) {
-                if i < SCREEN_WIDTH && y < SCREEN_HEIGHT {
-                    self.draw_pixel(i as u8, y as u8);
+            if let Mode::PixelTransfer = self.mode() {
+                let x = ((self.bad_timer % HORIZONTAL_LINE_CYCLES) - OAM_SEARCH_CYCLES) * 4;
+                let y = self.bad_timer / HORIZONTAL_LINE_CYCLES;
+                for i in x..(x + 4) {
+                    if i < SCREEN_WIDTH && y < SCREEN_HEIGHT {
+                        self.draw_pixel(i as u8, y as u8);
+                    }
                 }
+            }
+
+            if self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
+                interrupt = Some(Interrupt::VBlank);
+                self.draw_buffer = true;
             }
         }
 
-        if self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
-            return Ok(Some(Interrupt::VBlank));
-        }
-
-        Ok(None)
+        Ok(interrupt)
     }
 }
 

@@ -1,5 +1,6 @@
 use ppu::Ppu;
 use timer::Timer;
+use opcode::{Address, Condition};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Flag {
@@ -347,6 +348,7 @@ impl Cpu {
     }
 
     pub fn push_stack(&mut self, val: u16) -> Result<(), String> {
+        self.tick(2)?;
         self.sp -= 2;
         let sp = self.sp;
         self.write_mem16(sp, val)?;
@@ -354,10 +356,73 @@ impl Cpu {
     }
 
     pub fn pop_stack(&mut self) -> Result<u16, String> {
+        self.tick(2)?;
         let sp = self.sp;
         let val = self.read_mem16(sp)?;
         self.sp += 2;
         return Ok(val);
+    }
+
+
+    pub fn get_address8(&mut self, addr: Address) -> Result<u8, String> {
+        match addr {
+            Address::Data8(v) => {
+                self.tick(1)?;
+                Ok(v)
+            }
+            Address::Indirect(r) => {
+                self.tick(1)?;
+                let addr = self.get_reg16(r)?;
+                self.read_mem8(addr)
+            }
+            Address::Register(r) => self.get_reg8(r),
+            Address::Extended(e) => {
+                self.tick(2)?;
+                let addr: u16 = 0xff00 | (e as u16);
+                self.read_mem8(addr)
+            }
+            Address::Immediate(addr) => {
+                self.tick(3)?;
+                self.read_mem8(addr)
+            }
+            _ => Err("Bad get_address8".to_string()),
+        }
+    }
+
+    pub fn set_address8(&mut self, addr: Address, val: u8) -> Result<(), String> {
+        match addr {
+            Address::Register(r) => self.set_reg8(r, val),
+            Address::Indirect(r) => {
+                self.tick(1)?;
+                let addr = self.get_reg16(r)?;
+                self.write_mem8(addr, val)
+            }
+            Address::Immediate(addr) => {
+                self.tick(3)?;
+                self.write_mem8(addr, val)
+            }
+            Address::Extended(e) => {
+                self.tick(2)?;
+                let addr: u16 = 0xff00 | (e as u16);
+                self.write_mem8(addr, val)
+            }
+            Address::ExtendedIndirect(r) => {
+                self.tick(1)?;
+                let addr = 0xff00 | (self.get_reg8(r)? as u16);
+                self.write_mem8(addr, val)
+            }
+            _ => Err("Bad set_address8".to_string()),
+        }
+    }
+
+    pub fn check_condition(&self, condition: Condition) -> bool {
+        match condition {
+            Condition::Unconditional => true,
+            Condition::Zero => self.get_flag(Flag::Z),
+            Condition::NonZero => !self.get_flag(Flag::Z),
+            Condition::Carry => self.get_flag(Flag::C),
+            Condition::NonCarry => !self.get_flag(Flag::C),
+        }
     }
 
     fn handle_dma_transfer(&mut self, addr: u16) -> Result<(), String> {
@@ -408,7 +473,10 @@ impl Cpu {
             Some(Interrupt::Timer) => self.interrupt_flag |= 1 << 2,
             _ => (),
         };
+        Ok(())
+    }
 
+    pub fn check_for_interrupt(&mut self) -> Result<(), String> {
         if let Some(irq) = self.active_interrupt() {
             let pc = self.pc;
             self.push_stack(pc)?;
