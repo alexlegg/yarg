@@ -177,9 +177,7 @@ where
             Ok((2, Operation::Load8(destination, source)))
         }
         // RLCA
-        0x07 => {
-            Ok((1, Operation::RotateLeft(true, Address::Register(Reg::A))))
-        }
+        0x07 => Ok((1, Operation::RotateLeft(true, Address::Register(Reg::A)))),
         // DEC <reg>
         0x05 | 0x0d | 0x15 | 0x1d | 0x25 | 0x2d | 0x35 | 0x3d => {
             let destination = opcode_reg(bits(5, 3, opcode));

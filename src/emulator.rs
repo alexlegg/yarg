@@ -63,6 +63,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     cpu.active_interrupt();
 
+    // Tick once here. Every instruction will take at least one cycle for
+    // reading the value at PC.
     cpu.tick(1)?;
 
     if cpu.is_halted {

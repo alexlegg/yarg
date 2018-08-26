@@ -59,7 +59,7 @@ pub struct Cpu {
 
     // TODO refactor
     pub ppu: Ppu,
-    timer : Timer,
+    timer: Timer,
 
     // TODO refactor
     pub is_halted: bool,
@@ -360,7 +360,7 @@ impl Cpu {
         return Ok(val);
     }
 
-    fn handle_dma_transfer(&mut self, addr : u16) -> Result<(), String> {
+    fn handle_dma_transfer(&mut self, addr: u16) -> Result<(), String> {
         for off in 0..0x9f {
             let val = self.read_mem8(addr + off)?;
             self.write_mem8(0xfe00 + off, val)?;
@@ -385,7 +385,7 @@ impl Cpu {
         return None;
     }
 
-    fn ack_interrupt(&mut self, irq : Interrupt) {
+    fn ack_interrupt(&mut self, irq: Interrupt) {
         match irq {
             Interrupt::Joypad => self.interrupt_flag &= !(1 << 4),
             Interrupt::LCDStat => self.interrupt_flag &= !(1 << 3),
