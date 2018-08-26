@@ -41,6 +41,8 @@ pub struct Ppu {
     scroll_x: u8,
     scroll_y: u8,
     sprite_attributes: [SpriteAttributeTable; 40],
+    sprite_palette0 : u8,
+    sprite_palette1 : u8,
 
     pub screen_buffer: [u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE],
 }
@@ -64,6 +66,8 @@ impl Ppu {
             scroll_x: 0,
             scroll_y: 0,
             sprite_attributes: [SpriteAttributeTable::new(); 40],
+            sprite_palette0 : 0,
+            sprite_palette1 : 0,
             screen_buffer: [0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
         }
     }
@@ -72,23 +76,13 @@ impl Ppu {
         self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES
     }
 
-    fn get_bg_colour(&self, val : u8) -> u32 {
-        if val > 4 {
-            panic!("Bad value to get_colour");
-        }
-        match (self.bg_palette >> (val * 2)) & 0b11 {
-            0b00 => 0xffffff,
-            0b01 => 0xc0c0c0,
-            0b10 => 0x969696,
-            0b11 => 0x000000,
-            _ => 0xffffff,
-        }
-    }
 
     // TODO Don't do this pixel by pixel (obviously).
+    // TODO Refactor this horrible mess
     fn draw_pixel(&mut self, x: u8, y: u8) {
         if self.lcdc & LCDC_SPRITE_ENABLE > 0 {
-            let mut colour = 0;
+            let sprite_height = if self.lcdc & LCDC_SPRITE_SIZE == 0 { 8 } else { 16 };
+            let mut colour : Option<u32> = None;
             for sprite in self.sprite_attributes.iter() {
                 if sprite.y_position == 0 || sprite.y_position as u64 >= SCREEN_HEIGHT + 16 {
                     continue;
@@ -96,8 +90,33 @@ impl Ppu {
                 if sprite.x_position == 0 || sprite.x_position as u64 >= SCREEN_WIDTH + 8 {
                     continue;
                 }
+                if y + 16 < sprite.y_position || y + 16 >= sprite.y_position + sprite_height {
+                    continue;
+                }
+                if x + 8 < sprite.x_position || x >= sprite.x_position {
+                    continue;
+                }
+                let s_x = x + 8 - sprite.x_position;
+                let tile_y = (((y + 16 - sprite.y_position) % 8) << 1) as usize;
+                // TODO Handle sprites of height 16.
+                let data0 = self.tiles[sprite.tile_number as usize][tile_y];
+                let data1 = self.tiles[sprite.tile_number as usize][tile_y+1];
+                let colour_val = (bit(data1, 7 - (s_x % 8)) << 1) | bit(data0, 7 - (s_x % 8));
+                // TODO palette
+                let palette : u8 = if sprite.flags & (1 << 3) == 0 {
+                    self.sprite_palette0
+                } else {
+                    self.sprite_palette1
+                };
+                if colour_val != 0 {
+                    colour = Some(get_palette_colour(colour_val, palette));
+                }
             }
             // If we didn't find a sprite pixel, or it was transparent then fall through to background.
+            if let Some(c) = colour {
+                self.put_pixel(x, y, c);
+                return;
+            }
         }
         let bg_x = x.wrapping_add(self.scroll_y);
         let bg_y = y.wrapping_add(self.scroll_x);
@@ -110,7 +129,7 @@ impl Ppu {
         let data0 = self.tiles[tile_num][tile_y];
         let data1 = self.tiles[tile_num][tile_y+1];
         let colour_val = (bit(data1, 7 - (bg_x % 8)) << 1) | bit(data0, 7 - (bg_x % 8));
-        let colour = self.get_bg_colour(colour_val);
+        let colour = get_palette_colour(colour_val, self.bg_palette);
         self.put_pixel(x, y, colour);
     }
 
@@ -155,6 +174,9 @@ impl TrapHandler for Ppu {
             0xff42 => Ok(self.scroll_x),
             0xff43 => Ok(self.scroll_y),
             0xff44 => Ok((self.bad_timer % (SCREEN_HEIGHT + V_BLANK_LINES)) as u8),
+            0xff47 => Ok(self.bg_palette),
+            0xff48 => Ok(self.sprite_palette0),
+            0xff49 => Ok(self.sprite_palette1),
             _ => Err(format!("Not implemented: PPU read {:#06x}", addr)),
         }
     }
@@ -170,8 +192,11 @@ impl TrapHandler for Ppu {
         } else if addr == 0xff43 {
             self.scroll_y = val;
         } else if addr == 0xff47 {
-            println!("bg palette: {:x}", val);
             self.bg_palette = val;
+        } else if addr == 0xff48 {
+            self.sprite_palette0 = val;
+        } else if addr == 0xff49 {
+            self.sprite_palette1 = val;
         } else if addr >= 0xff40 {
             println!("Write to PPU {:#06x} {:#04x}", addr, val);
         } else if addr >= 0x8000 && addr <= 0x97ff {
@@ -233,4 +258,17 @@ impl SpriteAttributeTable {
 
 fn bit(v: u8, b: u8) -> u8 {
     return (v & (1 << b)) >> b;
+}
+
+fn get_palette_colour(val : u8, palette : u8) -> u32 {
+    if val > 4 {
+        panic!("Bad value to get_colour");
+    }
+    match (palette >> (val * 2)) & 0b11 {
+        0b00 => 0xffffff,
+        0b01 => 0xc0c0c0,
+        0b10 => 0x969696,
+        0b11 => 0x000000,
+        _ => 0xffffff,
+    }
 }

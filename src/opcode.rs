@@ -1,4 +1,5 @@
 use cpu::Reg;
+use std::fmt;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Operation {
@@ -44,7 +45,7 @@ pub enum Operation {
 }
 
 // TODO rename to Operand
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub enum Address {
     Register(Reg),
     Indirect(Reg),
@@ -54,6 +55,21 @@ pub enum Address {
     Relative(u8),
     Extended(u8),
     Fixed(u16),
+}
+
+impl fmt::Debug for Address {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Address::Register(r) => write!(f, "{:?}", r),
+            Address::Indirect(r) => write!(f, "({:?})", r),
+            Address::Data8(d) => write!(f, "${:#04x}", d),
+            Address::Data16(d) => write!(f, "${:#06x}", d),
+            Address::Immediate(i) => write!(f, "${:#06x}", i),
+            Address::Relative(r) => write!(f, "+{:#04x}", *r as i8),
+            Address::Extended(e) => write!(f, "$0x00{:02x}", e),
+            Address::Fixed(a) => write!(f, "${:#06x}", a),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

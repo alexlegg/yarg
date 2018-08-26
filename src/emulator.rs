@@ -71,18 +71,18 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     let pc = cpu.get_reg16(Reg::PC)?;
 
-    /*if pc == 0x359 {
+    /* if pc == 0x50 {
 		emu.breakpoint = true;
         println!("hit breakpoint");
 		return Ok(());
-	}*/
+	} */
 
     let (inst_size, inst) = get_inst(&cpu)?;
 
     /*
-    if pc > 0x100 {
-	    //cpu.dump_regs();
-	    println!("PC: {:#06x}, opcode: {:?}", pc, inst);
+    if (pc >= 0x205d && pc <= 0x2071) || pc >= 0x7ff0 {
+	    cpu.dump_regs();
+	    println!("{:#06x}: {:?}", pc, inst);
   	}
     */
 

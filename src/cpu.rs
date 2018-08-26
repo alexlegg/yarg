@@ -288,8 +288,8 @@ impl Cpu {
             self.wram[self.wram_bank][(addr - 0xd000) as usize] = val;
             return Ok(());
         } else if addr >= 0xfe00 && addr <= 0xfe9f {
-            // Sprite attribute table, ignored for now.
-            return Ok(());
+            // Sprite attribute table
+            return self.ppu.write(addr, val);
         } else if addr >= 0xfea0 && addr <= 0xfeff {
             // Not usable - Ignore.
             return Ok(());
@@ -410,9 +410,6 @@ impl Cpu {
         };
 
         if let Some(irq) = self.active_interrupt() {
-            if let Interrupt::Timer = irq {
-                println!("timer interrupt");
-            }
             let pc = self.pc;
             self.push_stack(pc)?;
             self.pc = interrupt_handler_addr(irq);
