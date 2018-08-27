@@ -364,6 +364,11 @@ where
             let source = Address::Register(Reg::A);
             Ok((3, Operation::Load8(destination, source)))
         }
+        // XOR <data8>
+        0xee => {
+            let source = Address::Data8(read_operand8(1)?);
+            Ok((2, Operation::Xor(source)))
+        }
         // LDH A, <addr8>
         0xf0 => {
             let destination = Address::Register(Reg::A);

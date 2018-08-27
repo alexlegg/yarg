@@ -5,6 +5,8 @@ use self::sdl2::event::Event;
 use self::sdl2::keyboard::Keycode;
 use self::sdl2::pixels::Color;
 use self::sdl2::pixels::PixelFormatEnum;
+use joypad::JoypadInput;
+use std::collections::HashSet;
 //use self::time::{Duration, PreciseTime};
 
 use emulator::Emulator;
@@ -45,6 +47,8 @@ pub fn init(mut emu: Emulator) {
     canvas.clear();
     canvas.present();
 
+    let mut joypad: JoypadInput = JoypadInput::new();
+
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
         // get the inputs here
@@ -55,11 +59,78 @@ pub fn init(mut emu: Emulator) {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => joypad.up = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => joypad.up = false,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Down),
+                    ..
+                } => joypad.down = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Down),
+                    ..
+                } => joypad.down = false,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => joypad.left = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => joypad.left = false,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => joypad.right = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => joypad.right = false,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Return),
+                    ..
+                } => joypad.start = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Return),
+                    ..
+                } => joypad.start = false,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Backspace),
+                    ..
+                } => joypad.select = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Backspace),
+                    ..
+                } => joypad.select = false,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Z),
+                    ..
+                } => joypad.button_a = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Z),
+                    ..
+                } => joypad.button_a = false,
+                Event::KeyDown {
+                    keycode: Some(Keycode::X),
+                    ..
+                } => joypad.button_b = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::X),
+                    ..
+                } => joypad.button_b = false,
                 _ => {}
             }
         }
 
-        match emu.emu_loop() {
+        //let keys : HashSet<Keycode> = event_pump.keyboard_state().pressed_scancodes().filter_map(Keycode::from_scancode).collect();
+        //println!("{:?}", joypad);
+
+        match emu.emu_loop(joypad) {
             Ok(_) => (),
             Err(s) => {
                 println!("{:?}", s);

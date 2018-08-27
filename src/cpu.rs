@@ -1,6 +1,7 @@
+use joypad::Joypad;
+use opcode::{Address, Condition};
 use ppu::Ppu;
 use timer::Timer;
-use opcode::{Address, Condition};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Flag {
@@ -61,6 +62,7 @@ pub struct Cpu {
     // TODO refactor
     pub ppu: Ppu,
     timer: Timer,
+    pub joypad: Joypad,
 
     // TODO refactor
     pub is_halted: bool,
@@ -115,6 +117,7 @@ impl Cpu {
             interrupt_flag: 0,
             ppu: Ppu::new(),
             timer: Timer::new(),
+            joypad: Joypad::new(),
 
             is_halted: false,
         }
@@ -244,13 +247,12 @@ impl Cpu {
             return Ok(self.wram[0][(addr - 0xc000) as usize]);
         } else if addr >= 0xd000 && addr <= 0xdfff {
             return Ok(self.wram[self.wram_bank][(addr - 0xd000) as usize]);
+        } else if addr == 0xff00 {
+            return self.joypad.read(addr);
         } else if addr >= 0xff04 && addr <= 0xff07 {
             return self.timer.read(addr);
         } else if addr >= 0xff40 && addr <= 0xff4b {
             return self.ppu.read(addr);
-        } else if addr == 0xff00 {
-            // Joypad IO.
-            return Ok(0);
         } else if addr >= 0xff00 && addr <= 0xff7f {
             println!("Read IO register {:#06x} as 0", addr);
             // Some IO register
@@ -297,6 +299,8 @@ impl Cpu {
         } else if addr >= 0xff80 && addr <= 0xfffe {
             self.hram[(addr - 0xff80) as usize] = val;
             return Ok(());
+        } else if addr == 0xff00 {
+            return self.joypad.write(addr, val);
         } else if addr >= 0xff40 && addr <= 0xff45 {
             return self.ppu.write(addr, val);
         } else if addr == 0xff46 {
@@ -308,9 +312,6 @@ impl Cpu {
             if val & 0b1 == 0b1 {
                 self.bootrom_enabled = false;
             }
-            return Ok(());
-        } else if addr == 0xff00 {
-            // Joypad IO. Ignored.
             return Ok(());
         } else if addr >= 0xff01 && addr <= 0xff02 {
             // Serial IO. Ignored.
@@ -362,7 +363,6 @@ impl Cpu {
         self.sp += 2;
         return Ok(val);
     }
-
 
     pub fn get_address8(&mut self, addr: Address) -> Result<u8, String> {
         match addr {

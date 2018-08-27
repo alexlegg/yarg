@@ -1,5 +1,6 @@
 mod cpu;
 mod emulator;
+mod joypad;
 mod opcode;
 mod ppu;
 mod sdl;

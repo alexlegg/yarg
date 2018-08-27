@@ -1,6 +1,7 @@
 use cpu::Cpu;
 use cpu::Flag;
 use cpu::Reg;
+use joypad::JoypadInput;
 use opcode::Address;
 use opcode::Condition;
 use opcode::Operation;
@@ -30,7 +31,8 @@ impl Emulator {
         return emu;
     }
 
-    pub fn emu_loop(&mut self) -> Result<(), String> {
+    pub fn emu_loop(&mut self, joypad: JoypadInput) -> Result<(), String> {
+        self.cpu.joypad.set_state(joypad);
         let ret = cpu_loop(self);
         if ret.is_err() {
             println!("");
@@ -262,10 +264,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::Xor(source) => {
-            cpu.a ^= match source {
-                Address::Register(r) => cpu.get_reg8(r)?,
-                _ => panic!("Bad xor source"),
-            };
+            cpu.a ^= cpu.get_address8(source)?;
             let z = cpu.a == 0;
             cpu.set_flag(Flag::Z, z);
             cpu.set_flag(Flag::N, false);
