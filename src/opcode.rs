@@ -6,7 +6,6 @@ pub enum Operation {
     Nop,
     Stop,
     Halt,
-
     Load8(Address, Address),
     Load16(Address, Address),
     LoadDecrement(Address, Address),
@@ -193,6 +192,14 @@ where
             let destination = arithmetic16_source(opcode);
             Ok((1, Operation::Decrement16(destination)))
         }
+        // LD A, (BC)
+        0x0a => {
+            let destination = Address::Indirect(Reg::BC);
+            let source = Address::Register(Reg::A);
+            Ok((1, Operation::Load8(destination, source)))
+        }
+        // RRCA
+        0x0f => Ok((1, Operation::RotateRight(true, Address::Register(Reg::A)))),
         // LD (DE), A
         0x12 => {
             let destination = Address::Indirect(Reg::DE);
@@ -214,6 +221,8 @@ where
             let source = Address::Indirect(Reg::DE);
             Ok((1, Operation::Load8(destination, source)))
         }
+        // RRA
+        0x1f => Ok((1, Operation::RotateRight(false, Address::Register(Reg::A)))),
         // JR <cond>, <rel8>
         0x20 | 0x28 | 0x30 | 0x38 => {
             let condition = decode_condition(bits(4, 3, opcode));
@@ -238,6 +247,12 @@ where
         0x32 => {
             let destination = Address::Indirect(Reg::HL);
             let source = Address::Register(Reg::A);
+            Ok((1, Operation::LoadDecrement(destination, source)))
+        }
+        // LDD A, (HL)
+        0x3a => {
+            let destination = Address::Register(Reg::A);
+            let source = Address::Indirect(Reg::HL);
             Ok((1, Operation::LoadDecrement(destination, source)))
         }
         // LD <reg>, <reg>
@@ -323,6 +338,11 @@ where
             let source = arithmetic16_source(opcode);
             Ok((1, Operation::Push(source)))
         }
+        // ADD <data8>
+        0xc6 => {
+            let source = Address::Data8(read_operand8(1)?);
+            Ok((2, Operation::Add(source)))
+        }
         // RST <fixed>
         0xc7 | 0xcf | 0xd7 | 0xdf | 0xe7 | 0xef | 0xf7 | 0xff => {
             // See Z80 Manual, Page 292.
@@ -332,6 +352,16 @@ where
         0xcb => {
             let op = decode_prefixed(read_operand8(1)?)?;
             Ok((2, op))
+        }
+        // ADC <data8>
+        0xce => {
+            let source = Address::Data8(read_operand8(1)?);
+            Ok((2, Operation::AddCarry(source)))
+        }
+        // SUB <data8>
+        0xd6 => {
+            let source = Address::Data8(read_operand8(1)?);
+            Ok((1, Operation::Sub(source)))
         }
         // RETI
         0xd9 => Ok((1, Operation::ReturnFromInterrupt)),
@@ -375,6 +405,11 @@ where
             let source = Address::Extended(read_operand8(1)?);
             Ok((2, Operation::Load8(destination, source)))
         }
+        // OR <data8>
+        0xf6 => {
+            let source = Address::Data8(read_operand8(1)?);
+            Ok((2, Operation::Or(source)))
+        }
         // CP <data8>
         0xfe => {
             let source = Address::Data8(read_operand8(1)?);
@@ -411,10 +446,20 @@ pub fn decode_prefixed(opcode: u8) -> Result<Operation, String> {
             let destination = opcode_reg(opcode);
             Ok(Operation::ShiftLeft(destination))
         }
+        // SRA <reg8>
+        0x28...0x2f => {
+            let destination = opcode_reg(opcode);
+            Ok(Operation::ShiftRight(destination))
+        }
         // SWAP <reg8>
         0x30...0x37 => {
             let destination = opcode_reg(opcode);
             Ok(Operation::Swap(destination))
+        }
+        // SRL <reg8>
+        0x38...0x3f => {
+            let destination = opcode_reg(opcode);
+            Ok(Operation::ShiftRightLogical(destination))
         }
         // BIT b,<reg8>
         0x40...0x7f => {

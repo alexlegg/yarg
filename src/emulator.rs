@@ -19,7 +19,7 @@ pub struct Emulator {
 impl Emulator {
     pub fn new() -> Emulator {
         let bootrom = fs::read("roms/bootrom.gb").unwrap();
-        let rom = fs::read("roms/drmario.gb").unwrap();
+        let rom = fs::read("roms/01-special.gb").unwrap();
         let mut emu = Emulator {
             instruction_stream: VecDeque::with_capacity(DEBUG_STREAM_SIZE),
             cpu: Cpu::new(bootrom, rom),
@@ -252,11 +252,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::And(source) => {
-            cpu.a &= match source {
-                Address::Register(r) => cpu.get_reg8(r)?,
-                Address::Data8(v) => v,
-                _ => panic!("Bad and source"),
-            };
+            cpu.a &= cpu.get_address8(source)?;
             let z = cpu.a == 0;
             cpu.set_flag(Flag::Z, z);
             cpu.set_flag(Flag::N, false);
@@ -272,10 +268,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::Or(source) => {
-            cpu.a |= match source {
-                Address::Register(r) => cpu.get_reg8(r)?,
-                _ => panic!("Bad or source"),
-            };
+            cpu.a |= cpu.get_address8(source)?;
             let z = cpu.a == 0;
             cpu.set_flag(Flag::Z, z);
             cpu.set_flag(Flag::N, false);
@@ -355,7 +348,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             let val = cpu.get_address8(destination)?;
             let mut val_next = val << 1;
             if copy_carry {
-                val_next |= val & 0b1;
+                val_next |= val >> 7;
             } else {
                 if cpu.get_flag(Flag::C) {
                     val_next |= 1;
@@ -366,11 +359,45 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::Z, val_next == 0);
             cpu.set_address8(destination, val_next)
         }
+        Operation::RotateRight(copy_carry, destination) => {
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
+            let mut val_next = val >> 1;
+            if copy_carry {
+                val_next |= (val & 1) << 7;
+            } else {
+                if cpu.get_flag(Flag::C) {
+                    val_next |= 1 << 7;
+                }
+            }
+            cpu.set_flag(Flag::C, val & 1 > 0);
+            // This may or may not be wrong, docs are inconsistent.
+            cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_address8(destination, val_next)
+        }
         Operation::ShiftLeft(destination) => {
             cpu.tick(1)?; // Tick for prefix
             let val = cpu.get_address8(destination)?;
             let val_next = val << 1;
             cpu.set_flag(Flag::C, val & (1 << 7) > 0);
+            cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_address8(destination, val_next)
+        }
+        Operation::ShiftRight(destination) => {
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
+            let val_next = val >> 1 | (val & (1 << 7));
+            cpu.set_flag(Flag::C, val & (1 << 0) > 0);
+            cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_address8(destination, val_next)
+        }
+        Operation::ShiftRightLogical(destination) => {
+            cpu.tick(1)?; // Tick for prefix
+            let val = cpu.get_address8(destination)?;
+            let val_next = val >> 1;
+            cpu.set_flag(Flag::C, val & (1 << 0) > 0);
             cpu.set_flag(Flag::Z, val_next == 0);
             cpu.set_flag(Flag::N, false);
             cpu.set_address8(destination, val_next)

@@ -197,6 +197,7 @@ impl TrapHandler for Ppu {
             self.lcdc = val;
         } else if addr == 0xff41 {
             println!("write to STAT {:x}", val);
+            unimplemented!("write to stat");
         } else if addr == 0xff42 {
             self.scroll_x = val;
         } else if addr == 0xff43 {

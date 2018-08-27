@@ -6,7 +6,6 @@ use self::sdl2::keyboard::Keycode;
 use self::sdl2::pixels::Color;
 use self::sdl2::pixels::PixelFormatEnum;
 use joypad::JoypadInput;
-use std::collections::HashSet;
 //use self::time::{Duration, PreciseTime};
 
 use emulator::Emulator;
@@ -126,9 +125,6 @@ pub fn init(mut emu: Emulator) {
                 _ => {}
             }
         }
-
-        //let keys : HashSet<Keycode> = event_pump.keyboard_state().pressed_scancodes().filter_map(Keycode::from_scancode).collect();
-        //println!("{:?}", joypad);
 
         match emu.emu_loop(joypad) {
             Ok(_) => (),

@@ -89,7 +89,7 @@ impl TrapHandler for Joypad {
         Ok(())
     }
 
-    fn tick(&mut self, cycles: u16) -> Result<Option<Interrupt>, String> {
+    fn tick(&mut self, _cycles: u16) -> Result<Option<Interrupt>, String> {
         Ok(None)
     }
 }

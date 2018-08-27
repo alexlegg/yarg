@@ -96,7 +96,7 @@ impl Cpu {
     pub fn new(bootrom: Vec<u8>, rom: Vec<u8>) -> Cpu {
         Cpu {
             a: 0x01,
-            f: 0xb0,
+            f: 0x00,
             b: 0x00,
             c: 0x13,
             d: 0x00,
