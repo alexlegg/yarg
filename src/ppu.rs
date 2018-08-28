@@ -46,6 +46,8 @@ pub struct Ppu {
 
     pub screen_buffer: [u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE],
     draw_buffer: bool,
+
+    tile_data_dirty : bool,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -71,6 +73,7 @@ impl Ppu {
             sprite_palette1: 0,
             screen_buffer: [0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
             draw_buffer: false,
+            tile_data_dirty: false,
         }
     }
 
@@ -151,6 +154,33 @@ impl Ppu {
         self.screen_buffer[offset + 2] = ((colour >> 16) & 0xff) as u8;
     }
 
+    pub fn get_tile_data(&mut self) -> Option<Box<[u8; 128 * 192 * PIXEL_SIZE]>> {
+        if !self.tile_data_dirty {
+            return None;
+        }
+        self.tile_data_dirty = false;
+        let mut buffer = Box::new([0; 128 * 192 * PIXEL_SIZE]);
+        for tile in 0..384 {
+            for ty in (0..16).step_by(2) {
+                let row_y = (tile / 16) * 8;
+                let col_x = (tile % 16) * 8;
+                let data0 = self.tiles[tile][ty];
+                let data1 = self.tiles[tile][ty + 1];
+                for x in 0..8 {
+                    let colour_val = (bit(data1, 7 - x) << 1) | bit(data0, 7 - x);
+                    let colour = get_palette_colour(colour_val, self.bg_palette);
+                    let offset =
+                        ((row_y + (ty / 2)) as usize * 128 * PIXEL_SIZE as usize) + 
+                        ((col_x + x as usize) * PIXEL_SIZE);
+                    buffer[offset] = (colour & 0xff) as u8;
+                    buffer[offset + 1] = ((colour >> 8) & 0xff) as u8;
+                    buffer[offset + 2] = ((colour >> 16) & 0xff) as u8;
+                }
+            }
+        }
+        Some(buffer)
+    }
+
     fn mode(&self) -> Mode {
         // TODO Probably faster to just store the mode and update in tick().
         if self.bad_timer > SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
@@ -197,7 +227,7 @@ impl TrapHandler for Ppu {
             self.lcdc = val;
         } else if addr == 0xff41 {
             println!("write to STAT {:x}", val);
-            unimplemented!("write to stat");
+            //unimplemented!("write to stat");
         } else if addr == 0xff42 {
             self.scroll_x = val;
         } else if addr == 0xff43 {
@@ -253,6 +283,7 @@ impl TrapHandler for Ppu {
             if self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
                 interrupt = Some(Interrupt::VBlank);
                 self.draw_buffer = true;
+                self.tile_data_dirty = true;
             }
         }
 

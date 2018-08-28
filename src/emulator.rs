@@ -54,6 +54,10 @@ impl Emulator {
     pub fn should_draw(&mut self) -> bool {
         return self.cpu.ppu.should_draw();
     }
+
+    pub fn get_tile_data(&mut self) -> Option<Box<[u8; 128 * 192 * 3]>> {
+        return self.cpu.ppu.get_tile_data();
+    }
 }
 
 fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
@@ -83,12 +87,10 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     let (inst_size, inst) = get_inst(&cpu)?;
 
-    /*
-    if pc > 0 {
+    if pc >= 0xc31a && pc <= 0xc32d {
 	    cpu.dump_regs();
 	    println!("{:#06x}: {:?}", pc, inst);
   	}
-    */
 
     cpu.set_pc(pc + inst_size)?;
 

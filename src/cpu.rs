@@ -77,6 +77,7 @@ pub enum Reg {
     E,
     H,
     L,
+    AF,
     BC,
     DE,
     HL,
@@ -204,6 +205,7 @@ impl Cpu {
 
     pub fn get_reg16(&self, reg: Reg) -> Result<u16, String> {
         match reg {
+            Reg::AF => Ok(((self.a as u16) << 8) | (self.f as u16)),
             Reg::BC => Ok(((self.b as u16) << 8) | (self.c as u16)),
             Reg::DE => Ok(((self.d as u16) << 8) | (self.e as u16)),
             Reg::HL => Ok(((self.h as u16) << 8) | (self.l as u16)),
@@ -217,6 +219,11 @@ impl Cpu {
         let high = (val >> 8) as u8;
         let low = (val & 0xff) as u8;
         match reg {
+            Reg::AF => {
+                self.a = high;
+                // Lowest 4 bits of F are always zero.
+                self.f = low & 0xf0;
+            }
             Reg::BC => {
                 self.b = high;
                 self.c = low;

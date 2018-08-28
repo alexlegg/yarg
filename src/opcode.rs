@@ -64,7 +64,14 @@ impl fmt::Debug for Address {
             Address::Data8(d) => write!(f, "${:#04x}", d),
             Address::Data16(d) => write!(f, "${:#06x}", d),
             Address::Immediate(i) => write!(f, "${:#06x}", i),
-            Address::Relative(r) => write!(f, "+{:#04x}", *r as i8),
+            Address::Relative(r) => {
+                let e = (*r as i8) + 2;
+                if e > 0 {
+                    write!(f, "+{:#04x}", e)
+                } else {
+                    write!(f, "-{:#04x}", e * -1)
+                }
+            }
             Address::Extended(e) => write!(f, "$0xff00 + {:02x}", e),
             Address::ExtendedIndirect(r) => write!(f, "$0xff00 + ({:?})", r),
         }
@@ -119,6 +126,16 @@ fn arithmetic16_source(opcode: u8) -> Address {
         0b01 => Address::Register(Reg::DE),
         0b10 => Address::Register(Reg::HL),
         0b11 => Address::Register(Reg::SP),
+        _ => unreachable!("Bad arithmetic 16 source"),
+    }
+}
+
+fn push_pop_source(opcode: u8) -> Address {
+    match (opcode & 0b00110000) >> 4 {
+        0b00 => Address::Register(Reg::BC),
+        0b01 => Address::Register(Reg::DE),
+        0b10 => Address::Register(Reg::HL),
+        0b11 => Address::Register(Reg::AF),
         _ => unreachable!("Bad arithmetic 16 source"),
     }
 }
@@ -331,11 +348,11 @@ where
             Ok((1, Operation::Return(condition)))
         }
         0xc1 | 0xd1 | 0xe1 | 0xf1 => {
-            let destination = arithmetic16_source(opcode);
+            let destination = push_pop_source(opcode);
             Ok((1, Operation::Pop(destination)))
         }
         0xc5 | 0xd5 | 0xe5 | 0xf5 => {
-            let source = arithmetic16_source(opcode);
+            let source = push_pop_source(opcode);
             Ok((1, Operation::Push(source)))
         }
         // ADD <data8>
@@ -361,7 +378,7 @@ where
         // SUB <data8>
         0xd6 => {
             let source = Address::Data8(read_operand8(1)?);
-            Ok((1, Operation::Sub(source)))
+            Ok((2, Operation::Sub(source)))
         }
         // RETI
         0xd9 => Ok((1, Operation::ReturnFromInterrupt)),

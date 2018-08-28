@@ -5,17 +5,26 @@ use self::sdl2::event::Event;
 use self::sdl2::keyboard::Keycode;
 use self::sdl2::pixels::Color;
 use self::sdl2::pixels::PixelFormatEnum;
+use self::sdl2::rect::Rect;
 use joypad::JoypadInput;
 //use self::time::{Duration, PreciseTime};
 
 use emulator::Emulator;
 
-pub fn init(mut emu: Emulator) {
+pub fn init(mut emu: Emulator, show_vram: bool) {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
+    let mut screen_width = 320;
+    let mut screen_height = 288;
+
+    if show_vram {
+        screen_width += 256;
+        screen_height = 384;
+    }
+
     let window = video_subsystem
-        .window("YARG", 320, 288)
+        .window("YARG", screen_width, screen_height)
         .opengl()
         .build()
         .unwrap();
@@ -28,18 +37,8 @@ pub fn init(mut emu: Emulator) {
         .create_texture_streaming(PixelFormatEnum::RGB24, 160, 144)
         .unwrap();
 
-    // Create a red-green gradient
-    texture
-        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            for y in 0..144 {
-                for x in 0..160 {
-                    let offset = y * pitch + x * 3;
-                    buffer[offset] = 0xff;
-                    buffer[offset + 1] = y as u8;
-                    buffer[offset + 2] = 0;
-                }
-            }
-        })
+    let mut vram_texture = texture_creator
+        .create_texture_streaming(PixelFormatEnum::RGB24, 128, 192)
         .unwrap();
 
     canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -134,11 +133,17 @@ pub fn init(mut emu: Emulator) {
             }
         }
 
+        if let Some(buf) = emu.get_tile_data() {
+            vram_texture.update(None, buf.as_ref(), 3 * 128).unwrap();
+            canvas.copy(&vram_texture, None, Some(Rect::new(320, 0, 256, 384))).unwrap();
+            canvas.present();
+        }
+
         //let start = PreciseTime::now();
 
         if emu.should_draw() {
             texture.update(None, emu.screen_buffer(), 3 * 160).unwrap();
-            canvas.copy(&texture, None, None).unwrap();
+            canvas.copy(&texture, None, Some(Rect::new(0, 0, 320, 288))).unwrap();
             canvas.present();
         }
 
