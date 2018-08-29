@@ -7,7 +7,8 @@ use timer::Timer;
 pub enum Flag {
     Z,
     N,
-    /* H, */ C,
+    H,
+    C,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -154,7 +155,7 @@ impl Cpu {
         let mask = match flag {
             Flag::Z => 1 << 7,
             Flag::N => 1 << 6,
-            //Flag::H => 1 << 5,
+            Flag::H => 1 << 5,
             Flag::C => 1 << 4,
         };
         return (self.f & mask) > 0;
@@ -164,7 +165,7 @@ impl Cpu {
         let mask = match flag {
             Flag::Z => 1 << 7,
             Flag::N => 1 << 6,
-            //Flag::H => 1 << 5,
+            Flag::H => 1 << 5,
             Flag::C => 1 << 4,
         };
         if val {

@@ -17,9 +17,9 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new() -> Emulator {
+    pub fn new(rom_fn : &String) -> Emulator {
         let bootrom = fs::read("roms/bootrom.gb").unwrap();
-        let rom = fs::read("roms/01-special.gb").unwrap();
+        let rom = fs::read(rom_fn).unwrap();
         let mut emu = Emulator {
             instruction_stream: VecDeque::with_capacity(DEBUG_STREAM_SIZE),
             cpu: Cpu::new(bootrom, rom),
@@ -60,6 +60,14 @@ impl Emulator {
     }
 }
 
+fn half_carried(curr : u8, val : u8) -> bool {
+    (curr & 0x0f) > (val & 0x0f)
+}
+
+fn half_borrowed(curr : u8, val : u8) -> bool {
+    (curr & 0x0f) < (val & 0x0f)
+}
+
 fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     if emu.breakpoint {
         return Ok(());
@@ -87,10 +95,12 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     let (inst_size, inst) = get_inst(&cpu)?;
 
+    /*
     if pc >= 0xc31a && pc <= 0xc32d {
 	    cpu.dump_regs();
 	    println!("{:#06x}: {:?}", pc, inst);
   	}
+    */
 
     cpu.set_pc(pc + inst_size)?;
 
@@ -101,6 +111,27 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
         Operation::Nop => Ok(()),
         Operation::Halt => {
             cpu.is_halted = true;
+            Ok(())
+        }
+        Operation::DecimalAdjustAccumulator => {
+            let mut correction = 0;
+            let mut c = false;
+            if cpu.get_flag(Flag::H) || (!cpu.get_flag(Flag::N) && (cpu.a & 0xf) > 0x9) {
+                correction |= 0x6;
+            }
+            if cpu.get_flag(Flag::C) || (!cpu.get_flag(Flag::N) && cpu.a > 0x99) {
+                correction |= 0x60;
+                c = true;
+            }
+            let next_a = if cpu.get_flag(Flag::N) {
+                cpu.a.wrapping_sub(correction)
+            } else {
+                cpu.a.wrapping_add(correction)
+            };
+            cpu.set_flag(Flag::Z, next_a == 0);
+            cpu.set_flag(Flag::C, c);
+            cpu.set_flag(Flag::H, false);
+            cpu.a = next_a;
             Ok(())
         }
         Operation::Load8(destination, source) => {
@@ -208,11 +239,13 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
         }
         Operation::Add(source) => {
             let val = cpu.get_address8(source)?;
-            let (next_val, c) = cpu.a.overflowing_add(val);
-            cpu.a = next_val;
-            cpu.set_flag(Flag::Z, next_val == 0);
+            let old_a = cpu.a;
+            let (next_a, c) = cpu.a.overflowing_add(val);
+            cpu.set_flag(Flag::Z, next_a == 0);
             cpu.set_flag(Flag::N, false);
             cpu.set_flag(Flag::C, c);
+            cpu.set_flag(Flag::H, half_carried(old_a, val));
+            cpu.a = next_a;
             Ok(())
         }
         Operation::Add16(source) => {
@@ -221,36 +254,38 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 Address::Register(r) => cpu.get_reg16(r)?,
                 _ => panic!("Bad and16 source"),
             };
-            let hl = cpu.get_reg16(Reg::HL)?;
-            let (next_val, c) = hl.overflowing_add(val);
-            cpu.set_reg16(Reg::HL, next_val)?;
-            cpu.set_flag(Flag::Z, next_val == 0);
+            let old_hl = cpu.get_reg16(Reg::HL)?;
+            let (next_hl, c) = old_hl.overflowing_add(val);
+            cpu.set_flag(Flag::Z, next_hl == 0);
             cpu.set_flag(Flag::N, false);
             cpu.set_flag(Flag::C, c);
+            cpu.set_flag(Flag::H, half_carried(old_hl as u8, val as u8));
+            cpu.set_reg16(Reg::HL, next_hl)?;
             Ok(())
         }
         Operation::AddCarry(source) => {
-            let val = cpu.get_address8(source)?;
-            let (next_val, mut c) = cpu.a.overflowing_add(val);
+            let mut val = cpu.get_address8(source)?;
             if cpu.get_flag(Flag::C) {
-                let (next_val, c1) = next_val.overflowing_add(1);
-                c |= c1;
-                cpu.a = next_val;
-            } else {
-                cpu.a = next_val;
+                val = val.wrapping_add(1);
             }
-            cpu.set_flag(Flag::Z, next_val == 0);
+            let old_a = cpu.a;
+            let next_a = cpu.a.wrapping_add(val);
+            cpu.set_flag(Flag::Z, next_a == 0);
             cpu.set_flag(Flag::N, false);
-            cpu.set_flag(Flag::C, c);
+            cpu.set_flag(Flag::C, old_a > next_a);
+            cpu.set_flag(Flag::H, half_carried(old_a, val));
+            cpu.a = next_a;
             Ok(())
         }
         Operation::Sub(source) => {
             let val = cpu.get_address8(source)?;
-            let (next_val, c) = cpu.a.overflowing_sub(val);
-            cpu.a = next_val;
-            cpu.set_flag(Flag::Z, next_val == 0);
+            let (next_a, c) = cpu.a.overflowing_sub(val);
+            let old_a = cpu.a;
+            cpu.set_flag(Flag::Z, next_a == 0);
             cpu.set_flag(Flag::N, true);
             cpu.set_flag(Flag::C, c);
+            cpu.set_flag(Flag::H, half_borrowed(old_a, val));
+            cpu.a = next_a;
             Ok(())
         }
         Operation::And(source) => {
@@ -259,6 +294,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::Z, z);
             cpu.set_flag(Flag::N, false);
             cpu.set_flag(Flag::C, false);
+            cpu.set_flag(Flag::H, true);
             Ok(())
         }
         Operation::Xor(source) => {
@@ -267,6 +303,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::Z, z);
             cpu.set_flag(Flag::N, false);
             cpu.set_flag(Flag::C, false);
+            cpu.set_flag(Flag::H, false);
             Ok(())
         }
         Operation::Or(source) => {
@@ -275,14 +312,17 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::Z, z);
             cpu.set_flag(Flag::N, false);
             cpu.set_flag(Flag::C, false);
+            cpu.set_flag(Flag::H, false);
             Ok(())
         }
         Operation::Compare(source) => {
-            let src = cpu.get_address8(source)?;
-            let (result, c) = cpu.a.overflowing_sub(src);
+            let val = cpu.get_address8(source)?;
+            let (result, c) = cpu.a.overflowing_sub(val);
+            let a = cpu.a;
             cpu.set_flag(Flag::Z, result == 0);
             cpu.set_flag(Flag::N, true);
             cpu.set_flag(Flag::C, c);
+            cpu.set_flag(Flag::H, half_borrowed(a, val));
             Ok(())
         }
         Operation::Pop(destination) => {
@@ -357,8 +397,9 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 }
             }
             cpu.set_flag(Flag::C, val & (1 << 7) > 0);
-            // This may or may not be wrong, docs are inconsistent.
             cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::H, false);
+            cpu.set_flag(Flag::N, false);
             cpu.set_address8(destination, val_next)
         }
         Operation::RotateRight(copy_carry, destination) => {
@@ -373,8 +414,9 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 }
             }
             cpu.set_flag(Flag::C, val & 1 > 0);
-            // This may or may not be wrong, docs are inconsistent.
             cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::H, false);
+            cpu.set_flag(Flag::N, false);
             cpu.set_address8(destination, val_next)
         }
         Operation::ShiftLeft(destination) => {
@@ -383,6 +425,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             let val_next = val << 1;
             cpu.set_flag(Flag::C, val & (1 << 7) > 0);
             cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::H, false);
             cpu.set_flag(Flag::N, false);
             cpu.set_address8(destination, val_next)
         }
@@ -392,6 +435,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             let val_next = val >> 1 | (val & (1 << 7));
             cpu.set_flag(Flag::C, val & (1 << 0) > 0);
             cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::H, false);
             cpu.set_flag(Flag::N, false);
             cpu.set_address8(destination, val_next)
         }
@@ -401,6 +445,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             let val_next = val >> 1;
             cpu.set_flag(Flag::C, val & (1 << 0) > 0);
             cpu.set_flag(Flag::Z, val_next == 0);
+            cpu.set_flag(Flag::H, false);
             cpu.set_flag(Flag::N, false);
             cpu.set_address8(destination, val_next)
         }
@@ -410,6 +455,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             let val_next = ((val & 0x0f) << 4) | ((val & 0xf0) >> 4);
             cpu.set_flag(Flag::Z, val_next == 0);
             cpu.set_flag(Flag::C, false);
+            cpu.set_flag(Flag::H, false);
             cpu.set_flag(Flag::N, false);
             cpu.set_address8(destination, val_next)
         }
@@ -427,6 +473,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.tick(1)?; // Tick for prefix
             let val = cpu.get_address8(source)?;
             cpu.set_flag(Flag::Z, val & (1 << b) == 0);
+            cpu.set_flag(Flag::H, true);
+            cpu.set_flag(Flag::N, false);
             Ok(())
         }
         _ => Err("Unrecognised instruction".to_string()),

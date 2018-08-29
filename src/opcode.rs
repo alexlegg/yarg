@@ -6,6 +6,7 @@ pub enum Operation {
     Nop,
     Stop,
     Halt,
+    DecimalAdjustAccumulator,
     Load8(Address, Address),
     Load16(Address, Address),
     LoadDecrement(Address, Address),
@@ -251,6 +252,10 @@ where
             let source = Address::Register(Reg::A);
             let destination = Address::Indirect(Reg::HL);
             Ok((1, Operation::LoadIncrement(destination, source)))
+        }
+        // DAA
+        0x27 => {
+            Ok((1, Operation::DecimalAdjustAccumulator))
         }
         // LDI A, (HL)
         0x2a => {

@@ -11,11 +11,19 @@ use std::env;
 fn main() {
 		let args: Vec<String> = env::args().collect();
 		let mut show_vram : bool = false;
-		for arg in args {
+		let mut args_processed = 1;
+		for arg in &args {
 			if arg == "-v" {
-				show_vram = true
+				show_vram = true;
+				args_processed += 1;
 			}
 		}
-    let emu = emulator::Emulator::new();
-    sdl::init(emu, show_vram);
+		if args_processed == args.len() {
+			println!("Must specify ROM");
+			return;
+		}
+		if let Some(rom_fn) = args.last() {
+			let emu = emulator::Emulator::new(rom_fn);
+	    sdl::init(emu, show_vram);
+		}
 }
