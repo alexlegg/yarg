@@ -15,12 +15,15 @@ pub enum Operation {
     Increment16(Address),
     Decrement(Address),
     Decrement16(Address),
+    SetCarry,
+    ComplementCarry,
     Jump(Condition, Address),
     Complement,
     Add(Address),
     AddCarry(Address),
     Add16(Address),
     Sub(Address),
+    SubCarry(Address),
     And(Address),
     Xor(Address),
     Or(Address),
@@ -33,6 +36,8 @@ pub enum Operation {
     DisableInterrupts,
     EnableInterrupts,
     ReturnFromInterrupt,
+    RotateLeftA(bool, Address),
+    RotateRightA(bool, Address),
     RotateLeft(bool, Address),
     RotateRight(bool, Address),
     ShiftLeft(Address),
@@ -53,6 +58,7 @@ pub enum Address {
     Data16(u16),
     Immediate(u16),
     Relative(u8),
+    StackRelative(u8),
     Extended(u8),
     ExtendedIndirect(Reg),
 }
@@ -65,7 +71,7 @@ impl fmt::Debug for Address {
             Address::Data8(d) => write!(f, "${:#04x}", d),
             Address::Data16(d) => write!(f, "${:#06x}", d),
             Address::Immediate(i) => write!(f, "${:#06x}", i),
-            Address::Relative(r) => {
+            Address::Relative(r) | Address::StackRelative(r) => {
                 let e = (*r as i8) + 2;
                 if e > 0 {
                     write!(f, "+{:#04x}", e)
@@ -194,11 +200,17 @@ where
             Ok((2, Operation::Load8(destination, source)))
         }
         // RLCA
-        0x07 => Ok((1, Operation::RotateLeft(true, Address::Register(Reg::A)))),
+        0x07 => Ok((1, Operation::RotateLeftA(true, Address::Register(Reg::A)))),
         // DEC <reg>
         0x05 | 0x0d | 0x15 | 0x1d | 0x25 | 0x2d | 0x35 | 0x3d => {
             let destination = opcode_reg(bits(5, 3, opcode));
             Ok((1, Operation::Decrement(destination)))
+        }
+        // LD <addr16>, SP
+        0x08 => {
+            let source = Address::Register(Reg::SP);
+            let destination = Address::Immediate(read_operand16(1)?);
+            Ok((3, Operation::Load16(destination, source)))
         }
         // ADD HL, <reg16>
         0x09 | 0x19 | 0x29 | 0x39 => {
@@ -217,7 +229,7 @@ where
             Ok((1, Operation::Load8(destination, source)))
         }
         // RRCA
-        0x0f => Ok((1, Operation::RotateRight(true, Address::Register(Reg::A)))),
+        0x0f => Ok((1, Operation::RotateRightA(true, Address::Register(Reg::A)))),
         // LD (DE), A
         0x12 => {
             let destination = Address::Indirect(Reg::DE);
@@ -225,8 +237,7 @@ where
             Ok((1, Operation::Load8(destination, source)))
         }
         // RLA
-        // TODO: This needs to be distinct from RL A (a prefixed instruction) for timing reasons.
-        0x17 => Ok((1, Operation::RotateLeft(false, Address::Register(Reg::A)))),
+        0x17 => Ok((1, Operation::RotateLeftA(false, Address::Register(Reg::A)))),
         // JR <rel8>
         0x18 => {
             let condition = Condition::Unconditional;
@@ -240,7 +251,7 @@ where
             Ok((1, Operation::Load8(destination, source)))
         }
         // RRA
-        0x1f => Ok((1, Operation::RotateRight(false, Address::Register(Reg::A)))),
+        0x1f => Ok((1, Operation::RotateRightA(false, Address::Register(Reg::A)))),
         // JR <cond>, <rel8>
         0x20 | 0x28 | 0x30 | 0x38 => {
             let condition = decode_condition(bits(4, 3, opcode));
@@ -271,11 +282,19 @@ where
             let source = Address::Register(Reg::A);
             Ok((1, Operation::LoadDecrement(destination, source)))
         }
+        // SCF
+        0x37 => {
+            Ok((1, Operation::SetCarry))
+        }
         // LDD A, (HL)
         0x3a => {
             let destination = Address::Register(Reg::A);
             let source = Address::Indirect(Reg::HL);
             Ok((1, Operation::LoadDecrement(destination, source)))
+        }
+        // SCF
+        0x3f => {
+            Ok((1, Operation::ComplementCarry))
         }
         // LD <reg>, <reg>
         0x40...0x75 | 0x77...0x7f => {
@@ -326,6 +345,11 @@ where
         0x90...0x97 => {
             let source = opcode_reg(opcode);
             Ok((1, Operation::Sub(source)))
+        }
+        // SBC <reg>
+        0x98...0x9f => {
+            let source = opcode_reg(opcode);
+            Ok((1, Operation::SubCarry(source)))
         }
         // AND <reg>
         0xa0...0xa7 => {
@@ -387,6 +411,11 @@ where
         }
         // RETI
         0xd9 => Ok((1, Operation::ReturnFromInterrupt)),
+        // SBC <data8>
+        0xde => {
+            let source = Address::Data8(read_operand8(1)?);
+            Ok((2, Operation::SubCarry(source)))
+        }
         // LDH <addr8>, A
         0xe0 => {
             let destination = Address::Extended(read_operand8(1)?);
@@ -403,6 +432,13 @@ where
         0xe6 => {
             let source = Address::Data8(read_operand8(1)?);
             Ok((2, Operation::And(source)))
+        }
+        // ADD SP, <rel8>
+        0xe8 => {
+            // TODO Is this right?
+            let destination = Address::Register(Reg::SP);
+            let source = Address::StackRelative(read_operand8(1)?);
+            Ok((2, Operation::Load16(destination, source)))
         }
         // JP (HL)
         0xe9 => {
@@ -439,6 +475,18 @@ where
         }
         // DI
         0xf3 => Ok((1, Operation::DisableInterrupts)),
+        // LD HL, SP + <rel8>
+        0xf8 => {
+            let source = Address::StackRelative(read_operand8(1)?);
+            let destination = Address::Register(Reg::HL);
+            Ok((2, Operation::Load16(destination, source)))
+        }
+        // LD SP, HL
+        0xf9 => {
+            let source = Address::Register(Reg::HL);
+            let destination = Address::Register(Reg::SP);
+            Ok((1, Operation::Load16(destination, source)))
+        }
         // LD A, <addr16>
         0xfa => {
             let source = Address::Immediate(read_operand16(1)?);
@@ -453,6 +501,16 @@ where
 
 pub fn decode_prefixed(opcode: u8) -> Result<Operation, String> {
     match opcode {
+        // RLC <reg8>
+        0x00...0x07 => {
+            let destination = opcode_reg(opcode);
+            Ok(Operation::RotateLeft(true, destination))
+        }
+        // RRC <reg8>
+        0x08...0x0f => {
+            let destination = opcode_reg(opcode);
+            Ok(Operation::RotateRight(true, destination))
+        }
         // RL <reg8>
         0x10...0x17 => {
             let destination = opcode_reg(opcode);

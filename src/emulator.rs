@@ -17,8 +17,8 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new(rom_fn : &String) -> Emulator {
-        let bootrom = fs::read("roms/bootrom.gb").unwrap();
+    pub fn new(bootrom_fn : Option<&str>, rom_fn : &str) -> Emulator {
+        let bootrom = bootrom_fn.map(|f| fs::read(f).unwrap());
         let rom = fs::read(rom_fn).unwrap();
         let mut emu = Emulator {
             instruction_stream: VecDeque::with_capacity(DEBUG_STREAM_SIZE),
@@ -61,7 +61,7 @@ impl Emulator {
 }
 
 fn half_carried(curr : u8, val : u8) -> bool {
-    (curr & 0x0f) > (val & 0x0f)
+    (curr & 0x0f) + (val & 0x0f) > 0x0f
 }
 
 fn half_borrowed(curr : u8, val : u8) -> bool {
@@ -96,7 +96,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     let (inst_size, inst) = get_inst(&cpu)?;
 
     /*
-    if pc >= 0xc31a && pc <= 0xc32d {
+    if pc >= 0xdef8 && pc <= 0xdefa {
 	    cpu.dump_regs();
 	    println!("{:#06x}: {:?}", pc, inst);
   	}
@@ -139,16 +139,28 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_address8(destination, src)
         }
         Operation::Load16(destination, source) => {
+            // TODO The timing here is most likely wrong.
             let src = match source {
+                Address::Register(r) => {
+                    cpu.tick(1)?;
+                    cpu.get_reg16(r)
+                }
                 Address::Data16(imm) => {
                     cpu.tick(2)?;
-                    imm
+                    Ok(imm)
                 }
-                _ => unimplemented!("Load source"),
-            };
+                Address::StackRelative(rel) => {
+                    cpu.tick(2)?;
+                    let e: i8 = (rel as i8) + 2;
+                    let sp = cpu.get_reg16(Reg::SP)?;
+                    Ok((sp as i16).wrapping_add(e.into()) as u16)
+                }
+                _ => Err("Load16 source".to_string()),
+            }?;
             match destination {
                 Address::Register(r) => cpu.set_reg16(r, src),
-                _ => unimplemented!("Load destination"),
+                Address::Immediate(addr) => cpu.write_mem16(addr, src),
+                _ => Err("Load16 destination".to_string()),
             }
         }
         Operation::LoadIncrement(destination, source) => {
@@ -172,10 +184,10 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
         Operation::Increment(destination) => {
             let val0 = cpu.get_address8(destination)?;
             let val1 = val0.wrapping_add(1);
-            cpu.set_address8(destination, val1)?;
             cpu.set_flag(Flag::Z, val1 == 0);
             cpu.set_flag(Flag::N, false);
-            Ok(())
+            cpu.set_flag(Flag::H, (val0 & 0x0f) + 1 > 0x0f);
+            cpu.set_address8(destination, val1)
         }
         Operation::Increment16(destination) => {
             cpu.tick(1)?;
@@ -185,17 +197,15 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             }?;
             let v = cpu.get_reg16(reg)?.wrapping_add(1);
             cpu.set_reg16(reg, v)?;
-            cpu.set_flag(Flag::Z, v == 0);
-            cpu.set_flag(Flag::N, false);
             Ok(())
         }
         Operation::Decrement(destination) => {
             let val0 = cpu.get_address8(destination)?;
             let val1 = val0.wrapping_sub(1);
-            cpu.set_address8(destination, val1)?;
             cpu.set_flag(Flag::Z, val1 == 0);
-            cpu.set_flag(Flag::N, false);
-            Ok(())
+            cpu.set_flag(Flag::N, true);
+            cpu.set_flag(Flag::H, val0 & 0x0f == 0);
+            cpu.set_address8(destination, val1)
         }
         Operation::Decrement16(destination) => {
             cpu.tick(1)?;
@@ -204,9 +214,19 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 _ => Err("Increment has bad destination".to_string()),
             }?;
             let v = cpu.get_reg16(reg)?.wrapping_sub(1);
-            cpu.set_reg16(reg, v)?;
-            cpu.set_flag(Flag::Z, v == 0);
+            cpu.set_reg16(reg, v)
+        }
+        Operation::SetCarry => {
             cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, true);
+            cpu.set_flag(Flag::H, false);
+            Ok(())
+        }
+        Operation::ComplementCarry => {
+            let prev_carry = cpu.get_flag(Flag::C);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::C, !prev_carry);
+            cpu.set_flag(Flag::H, false);
             Ok(())
         }
         Operation::Jump(condition, source) => {
@@ -235,6 +255,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
         }
         Operation::Complement => {
             cpu.a = !cpu.a;
+            cpu.set_flag(Flag::N, true);
+            cpu.set_flag(Flag::H, true);
             Ok(())
         }
         Operation::Add(source) => {
@@ -256,24 +278,21 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             };
             let old_hl = cpu.get_reg16(Reg::HL)?;
             let (next_hl, c) = old_hl.overflowing_add(val);
-            cpu.set_flag(Flag::Z, next_hl == 0);
             cpu.set_flag(Flag::N, false);
             cpu.set_flag(Flag::C, c);
-            cpu.set_flag(Flag::H, half_carried(old_hl as u8, val as u8));
+            cpu.set_flag(Flag::H, (old_hl & 0xfff) + (val & 0xfff) > 0xfff);
             cpu.set_reg16(Reg::HL, next_hl)?;
             Ok(())
         }
         Operation::AddCarry(source) => {
-            let mut val = cpu.get_address8(source)?;
-            if cpu.get_flag(Flag::C) {
-                val = val.wrapping_add(1);
-            }
+            let val = cpu.get_address8(source)?;
+            let cy = if cpu.get_flag(Flag::C) { 1 } else { 0 };
             let old_a = cpu.a;
-            let next_a = cpu.a.wrapping_add(val);
+            let next_a = cpu.a.wrapping_add(val).wrapping_add(cy);
             cpu.set_flag(Flag::Z, next_a == 0);
             cpu.set_flag(Flag::N, false);
-            cpu.set_flag(Flag::C, old_a > next_a);
-            cpu.set_flag(Flag::H, half_carried(old_a, val));
+            cpu.set_flag(Flag::C, old_a as u16 + val as u16 + cy as u16 > 0xff);
+            cpu.set_flag(Flag::H, (old_a & 0x0f) + (val & 0x0f) + cy > 0x0f);
             cpu.a = next_a;
             Ok(())
         }
@@ -285,6 +304,19 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::N, true);
             cpu.set_flag(Flag::C, c);
             cpu.set_flag(Flag::H, half_borrowed(old_a, val));
+            cpu.a = next_a;
+            Ok(())
+        }
+        Operation::SubCarry(source) => {
+            let val = cpu.get_address8(source)?;
+            let cy = if cpu.get_flag(Flag::C) { 1 } else { 0 };
+            let old_a = cpu.a;
+            let (va, cval) = cpu.a.overflowing_sub(val);
+            let (next_a, ccy) = va.overflowing_sub(cy);
+            cpu.set_flag(Flag::Z, next_a == 0);
+            cpu.set_flag(Flag::N, true);
+            cpu.set_flag(Flag::C, cval | ccy);
+            cpu.set_flag(Flag::H, (old_a & 0x0f) < (val & 0x0f) + cy);
             cpu.a = next_a;
             Ok(())
         }
@@ -384,7 +416,38 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.push_stack(next_pc)?;
             cpu.set_pc(addr)
         }
-
+        Operation::RotateLeftA(copy_carry, destination) => {
+            let val = cpu.get_address8(destination)?;
+            let mut val_next = val << 1;
+            if copy_carry {
+                val_next |= val >> 7;
+            } else {
+                if cpu.get_flag(Flag::C) {
+                    val_next |= 1;
+                }
+            }
+            cpu.set_flag(Flag::C, val & (1 << 7) > 0);
+            cpu.set_flag(Flag::Z, false);
+            cpu.set_flag(Flag::H, false);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_address8(destination, val_next)
+        }
+        Operation::RotateRightA(copy_carry, destination) => {
+            let val = cpu.get_address8(destination)?;
+            let mut val_next = val >> 1;
+            if copy_carry {
+                val_next |= (val & 1) << 7;
+            } else {
+                if cpu.get_flag(Flag::C) {
+                    val_next |= 1 << 7;
+                }
+            }
+            cpu.set_flag(Flag::C, val & 1 > 0);
+            cpu.set_flag(Flag::Z, false);
+            cpu.set_flag(Flag::H, false);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_address8(destination, val_next)
+        }
         Operation::RotateLeft(copy_carry, destination) => {
             cpu.tick(1)?; // Tick for prefix
             let val = cpu.get_address8(destination)?;

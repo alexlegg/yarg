@@ -51,7 +51,7 @@ pub struct Cpu {
     // High RAM: 0xff80 - 0xfffe
     hram: [u8; 0x7f],
 
-    bootrom: Vec<u8>,
+    bootrom: Option<Vec<u8>>,
     bootrom_enabled: bool,
 
     rom: Vec<u8>,
@@ -95,7 +95,8 @@ pub trait TrapHandler {
 }
 
 impl Cpu {
-    pub fn new(bootrom: Vec<u8>, rom: Vec<u8>) -> Cpu {
+    pub fn new(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Cpu {
+        let has_bootrom = bootrom.is_some();
         Cpu {
             a: 0x01,
             f: 0x00,
@@ -105,14 +106,14 @@ impl Cpu {
             e: 0xd8,
             h: 0x01,
             l: 0x4d,
-            pc: 0x0000,
+            pc: if has_bootrom { 0x0000 } else { 0x0100 },
             sp: 0xfffe,
 
             wram: [[0; 0x1000]; 8],
             wram_bank: 1,
             hram: [0; 0x7f],
             bootrom: bootrom,
-            bootrom_enabled: true,
+            bootrom_enabled: has_bootrom,
             rom: rom,
             interrupt_master_enable: false,
             interrupt_enable: 0,
@@ -248,7 +249,10 @@ impl Cpu {
     pub fn read_mem8(&self, addr: u16) -> Result<u8, String> {
         //println!("read_mem8 {:#06x}", addr);
         if self.bootrom_enabled && addr <= 0xff {
-            return Ok(self.bootrom[addr as usize]);
+            if let Some(ref bootrom) = self.bootrom {
+                return Ok(bootrom[addr as usize]);
+            }
+            return Err("Bootrom is enabled but there is no bootrom".to_string());
         } else if addr <= 0x7fff {
             return Ok(self.rom[addr as usize]);
         } else if addr >= 0xc000 && addr <= 0xcfff {
@@ -287,7 +291,7 @@ impl Cpu {
         } else if addr >= 0x2000 && addr <= 0x3fff {
             // ROM bank select.
             if val != 0x00 && val != 0x01 {
-                unimplemented!("ROM bank other than 1 selected")
+                return Err(format!("ROM bank other than 1 selected by write to {:#06x}", addr));
             }
             return Ok(());
         } else if addr >= 0x8000 && addr <= 0x9fff {
