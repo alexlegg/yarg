@@ -265,18 +265,18 @@ impl Cpu {
             return self.timer.read(addr);
         } else if addr >= 0xff40 && addr <= 0xff4b {
             return self.ppu.read(addr);
+        } else if addr == 0xff0f {
+            // IF - Interrupt Flag
+            return Ok(self.interrupt_flag);
+        } else if addr >= 0xff80 && addr <= 0xfffe {
+            return Ok(self.hram[(addr - 0xff80) as usize]);
+        } else if addr == 0xffff {
+            // IE - Interrupt Enable
+            return Ok(self.interrupt_enable);
         } else if addr >= 0xff00 && addr <= 0xff7f {
             println!("Read IO register {:#06x} as 0", addr);
             // Some IO register
             return Ok(0);
-        } else if addr >= 0xff80 && addr <= 0xfffe {
-            return Ok(self.hram[(addr - 0xff80) as usize]);
-        } else if addr == 0xff0f {
-            // IF - Interrupt Flag
-            return Ok(self.interrupt_flag);
-        } else if addr == 0xffff {
-            // IE - Interrupt Enable
-            return Ok(self.interrupt_enable);
         } else {
             return Err(format!("Bad read_mem8 addr: {:#06x}", addr));
         }
@@ -291,7 +291,10 @@ impl Cpu {
         } else if addr >= 0x2000 && addr <= 0x3fff {
             // ROM bank select.
             if val != 0x00 && val != 0x01 {
-                return Err(format!("ROM bank other than 1 selected by write to {:#06x}", addr));
+                return Err(format!(
+                    "ROM bank other than 1 selected by write to {:#06x}",
+                    addr
+                ));
             }
             return Ok(());
         } else if addr >= 0x8000 && addr <= 0x9fff {
@@ -490,6 +493,14 @@ impl Cpu {
             Some(Interrupt::Timer) => self.interrupt_flag |= 1 << 2,
             _ => (),
         };
+
+        if self.is_halted
+            && !self.interrupt_master_enable
+            && (self.interrupt_flag & self.interrupt_enable) > 0
+        {
+            self.is_halted = false;
+        }
+
         Ok(())
     }
 

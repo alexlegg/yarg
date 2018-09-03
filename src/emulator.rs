@@ -17,7 +17,7 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new(bootrom_fn : Option<&str>, rom_fn : &str) -> Emulator {
+    pub fn new(bootrom_fn: Option<&str>, rom_fn: &str) -> Emulator {
         let bootrom = bootrom_fn.map(|f| fs::read(f).unwrap());
         let rom = fs::read(rom_fn).unwrap();
         let mut emu = Emulator {
@@ -60,11 +60,11 @@ impl Emulator {
     }
 }
 
-fn half_carried(curr : u8, val : u8) -> bool {
+fn half_carried(curr: u8, val: u8) -> bool {
     (curr & 0x0f) + (val & 0x0f) > 0x0f
 }
 
-fn half_borrowed(curr : u8, val : u8) -> bool {
+fn half_borrowed(curr: u8, val: u8) -> bool {
     (curr & 0x0f) < (val & 0x0f)
 }
 
@@ -236,7 +236,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                     cpu.tick(1)?;
                     let next_pc = cpu.get_reg16(Reg::PC)?;
                     let e: i8 = rel as i8;
-                    Ok(next_pc.wrapping_add(e as u16)) 
+                    Ok(next_pc.wrapping_add(e as u16))
                 }
                 _ => Err("Bad jump source".to_string()),
             }?;
@@ -410,9 +410,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
         Operation::AddStack(destination, source) => {
             cpu.tick(3)?;
             let src = match source {
-                Address::StackRelative(rel) => {
-                    Ok(rel as i8 as u16)
-                }
+                Address::StackRelative(rel) => Ok(rel as i8 as u16),
                 _ => Err("AddStack source".to_string()),
             }?;
             let sp = cpu.get_reg16(Reg::SP)?;
@@ -423,9 +421,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::H, (sp & 0x000f) + (src & 0x000f) > 0x000f);
             cpu.set_flag(Flag::C, (sp & 0x00ff) + (src & 0x00ff) > 0x00ff);
             match destination {
-                Address::Register(Reg::SP) => {
-                    cpu.set_reg16(Reg::SP, val_next)
-                }
+                Address::Register(Reg::SP) => cpu.set_reg16(Reg::SP, val_next),
                 Address::Register(Reg::HL) => {
                     cpu.tick(1)?;
                     cpu.set_reg16(Reg::HL, val_next)

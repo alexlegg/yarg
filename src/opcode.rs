@@ -266,9 +266,7 @@ where
             Ok((1, Operation::LoadIncrement(destination, source)))
         }
         // DAA
-        0x27 => {
-            Ok((1, Operation::DecimalAdjustAccumulator))
-        }
+        0x27 => Ok((1, Operation::DecimalAdjustAccumulator)),
         // LDI A, (HL)
         0x2a => {
             let destination = Address::Register(Reg::A);
@@ -284,9 +282,7 @@ where
             Ok((1, Operation::LoadDecrement(destination, source)))
         }
         // SCF
-        0x37 => {
-            Ok((1, Operation::SetCarry))
-        }
+        0x37 => Ok((1, Operation::SetCarry)),
         // LDD A, (HL)
         0x3a => {
             let destination = Address::Register(Reg::A);
@@ -294,9 +290,7 @@ where
             Ok((1, Operation::LoadDecrement(destination, source)))
         }
         // SCF
-        0x3f => {
-            Ok((1, Operation::ComplementCarry))
-        }
+        0x3f => Ok((1, Operation::ComplementCarry)),
         // LD <reg>, <reg>
         0x40...0x75 | 0x77...0x7f => {
             // NOTE: Gap for 0x76

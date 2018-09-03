@@ -135,7 +135,9 @@ pub fn init(mut emu: Emulator, show_vram: bool) {
 
         if let Some(buf) = emu.get_tile_data() {
             vram_texture.update(None, buf.as_ref(), 3 * 128).unwrap();
-            canvas.copy(&vram_texture, None, Some(Rect::new(320, 0, 256, 384))).unwrap();
+            canvas
+                .copy(&vram_texture, None, Some(Rect::new(320, 0, 256, 384)))
+                .unwrap();
             canvas.present();
         }
 
@@ -143,7 +145,9 @@ pub fn init(mut emu: Emulator, show_vram: bool) {
 
         if emu.should_draw() {
             texture.update(None, emu.screen_buffer(), 3 * 160).unwrap();
-            canvas.copy(&texture, None, Some(Rect::new(0, 0, 320, 288))).unwrap();
+            canvas
+                .copy(&texture, None, Some(Rect::new(0, 0, 320, 288)))
+                .unwrap();
             canvas.present();
         }
 
