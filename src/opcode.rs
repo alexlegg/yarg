@@ -36,6 +36,7 @@ pub enum Operation {
     DisableInterrupts,
     EnableInterrupts,
     ReturnFromInterrupt,
+    AddStack(Address, Address),
     RotateLeftA(bool, Address),
     RotateRightA(bool, Address),
     RotateLeft(bool, Address),
@@ -224,8 +225,8 @@ where
         }
         // LD A, (BC)
         0x0a => {
-            let destination = Address::Indirect(Reg::BC);
-            let source = Address::Register(Reg::A);
+            let destination = Address::Register(Reg::A);
+            let source = Address::Indirect(Reg::BC);
             Ok((1, Operation::Load8(destination, source)))
         }
         // RRCA
@@ -304,33 +305,6 @@ where
             Ok((1, Operation::Load8(destination, source)))
         }
         0x76 => Ok((1, Operation::Halt)),
-        // JP <cond>, <addr16>
-        0xc2 | 0xca | 0xd2 | 0xda => {
-            let condition = decode_condition(bits(4, 3, opcode));
-            let source = Address::Immediate(read_operand16(1)?);
-            Ok((3, Operation::Jump(condition, source)))
-        }
-        // JP <addr16>
-        0xc3 => {
-            let condition = Condition::Unconditional;
-            let source = Address::Immediate(read_operand16(1)?);
-            Ok((3, Operation::Jump(condition, source)))
-        }
-        // CALL NZ,<addr16>
-        0xc4 => {
-            let condition = Condition::NonZero;
-            Ok((3, Operation::Call(condition, read_operand16(1)?)))
-        }
-        // RET
-        0xc9 => {
-            let condition = Condition::Unconditional;
-            Ok((1, Operation::Return(condition)))
-        }
-        // CALL <addr16>
-        0xcd => {
-            let condition = Condition::Unconditional;
-            Ok((3, Operation::Call(condition, read_operand16(1)?)))
-        }
         // ADD <reg>
         0x80...0x87 => {
             let source = opcode_reg(opcode);
@@ -376,10 +350,29 @@ where
             let condition = decode_condition(bits(4, 3, opcode));
             Ok((1, Operation::Return(condition)))
         }
+        // POP <reg16>
         0xc1 | 0xd1 | 0xe1 | 0xf1 => {
             let destination = push_pop_source(opcode);
             Ok((1, Operation::Pop(destination)))
         }
+        // JP <cond>, <addr16>
+        0xc2 | 0xca | 0xd2 | 0xda => {
+            let condition = decode_condition(bits(4, 3, opcode));
+            let source = Address::Immediate(read_operand16(1)?);
+            Ok((3, Operation::Jump(condition, source)))
+        }
+        // JP <addr16>
+        0xc3 => {
+            let condition = Condition::Unconditional;
+            let source = Address::Immediate(read_operand16(1)?);
+            Ok((3, Operation::Jump(condition, source)))
+        }
+        // CALL NZ,<addr16>
+        0xc4 => {
+            let condition = Condition::NonZero;
+            Ok((3, Operation::Call(condition, read_operand16(1)?)))
+        }
+        // PUSH <reg16>
         0xc5 | 0xd5 | 0xe5 | 0xf5 => {
             let source = push_pop_source(opcode);
             Ok((1, Operation::Push(source)))
@@ -394,15 +387,35 @@ where
             // See Z80 Manual, Page 292.
             Ok((1, Operation::Reset((opcode & 0b00111000) as u16)))
         }
+        // RET
+        0xc9 => {
+            let condition = Condition::Unconditional;
+            Ok((1, Operation::Return(condition)))
+        }
         // CB Prefix
         0xcb => {
             let op = decode_prefixed(read_operand8(1)?)?;
             Ok((2, op))
         }
+        // CALL Z,<addr16>
+        0xcc => {
+            let condition = Condition::Zero;
+            Ok((3, Operation::Call(condition, read_operand16(1)?)))
+        }
+        // CALL <addr16>
+        0xcd => {
+            let condition = Condition::Unconditional;
+            Ok((3, Operation::Call(condition, read_operand16(1)?)))
+        }
         // ADC <data8>
         0xce => {
             let source = Address::Data8(read_operand8(1)?);
             Ok((2, Operation::AddCarry(source)))
+        }
+        // CALL NC,<addr16>
+        0xd4 => {
+            let condition = Condition::NonCarry;
+            Ok((3, Operation::Call(condition, read_operand16(1)?)))
         }
         // SUB <data8>
         0xd6 => {
@@ -411,6 +424,11 @@ where
         }
         // RETI
         0xd9 => Ok((1, Operation::ReturnFromInterrupt)),
+        // CALL C,<addr16>
+        0xdc => {
+            let condition = Condition::Carry;
+            Ok((3, Operation::Call(condition, read_operand16(1)?)))
+        }
         // SBC <data8>
         0xde => {
             let source = Address::Data8(read_operand8(1)?);
@@ -435,10 +453,9 @@ where
         }
         // ADD SP, <rel8>
         0xe8 => {
-            // TODO Is this right?
             let destination = Address::Register(Reg::SP);
             let source = Address::StackRelative(read_operand8(1)?);
-            Ok((2, Operation::Load16(destination, source)))
+            Ok((2, Operation::AddStack(destination, source)))
         }
         // JP (HL)
         0xe9 => {
@@ -463,6 +480,12 @@ where
             let source = Address::Extended(read_operand8(1)?);
             Ok((2, Operation::Load8(destination, source)))
         }
+        // LDH A, (C)
+        0xf2 => {
+            let destination = Address::Register(Reg::A);
+            let source = Address::ExtendedIndirect(Reg::C);
+            Ok((1, Operation::Load8(destination, source)))
+        }
         // OR <data8>
         0xf6 => {
             let source = Address::Data8(read_operand8(1)?);
@@ -477,9 +500,9 @@ where
         0xf3 => Ok((1, Operation::DisableInterrupts)),
         // LD HL, SP + <rel8>
         0xf8 => {
-            let source = Address::StackRelative(read_operand8(1)?);
             let destination = Address::Register(Reg::HL);
-            Ok((2, Operation::Load16(destination, source)))
+            let source = Address::StackRelative(read_operand8(1)?);
+            Ok((2, Operation::AddStack(destination, source)))
         }
         // LD SP, HL
         0xf9 => {

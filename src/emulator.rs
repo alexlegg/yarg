@@ -168,8 +168,6 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_address8(destination, src)?;
             let hl = cpu.get_reg16(Reg::HL)?.wrapping_add(1);
             cpu.set_reg16(Reg::HL, hl)?;
-            // TODO: Check if zero flag should actually be set here.
-            cpu.set_flag(Flag::Z, hl == 0);
             Ok(())
         }
         Operation::LoadDecrement(destination, source) => {
@@ -177,8 +175,6 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_address8(destination, src)?;
             let hl = cpu.get_reg16(Reg::HL)?.wrapping_sub(1);
             cpu.set_reg16(Reg::HL, hl)?;
-            // TODO: Check if zero flag should actually be set here.
-            cpu.set_flag(Flag::Z, hl == 0);
             Ok(())
         }
         Operation::Increment(destination) => {
@@ -238,8 +234,9 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                 Address::Register(r) => cpu.get_reg16(r),
                 Address::Relative(rel) => {
                     cpu.tick(1)?;
-                    let e: i8 = (rel as i8) + 2;
-                    Ok(((pc as i16) + (e as i16)) as u16)
+                    let next_pc = cpu.get_reg16(Reg::PC)?;
+                    let e: i8 = rel as i8;
+                    Ok(next_pc.wrapping_add(e as u16)) 
                 }
                 _ => Err("Bad jump source".to_string()),
             }?;
@@ -409,6 +406,32 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.tick(1)?;
             cpu.interrupt_master_enable = true;
             Ok(())
+        }
+        Operation::AddStack(destination, source) => {
+            cpu.tick(3)?;
+            let src = match source {
+                Address::StackRelative(rel) => {
+                    Ok(rel as i8 as u16)
+                }
+                _ => Err("AddStack source".to_string()),
+            }?;
+            let sp = cpu.get_reg16(Reg::SP)?;
+            let val_next = sp.wrapping_add(src);
+            cpu.set_flag(Flag::Z, false);
+            cpu.set_flag(Flag::N, false);
+            // NOTE: This contradicts the gameboy manual but passes blargg's.
+            cpu.set_flag(Flag::H, (sp & 0x000f) + (src & 0x000f) > 0x000f);
+            cpu.set_flag(Flag::C, (sp & 0x00ff) + (src & 0x00ff) > 0x00ff);
+            match destination {
+                Address::Register(Reg::SP) => {
+                    cpu.set_reg16(Reg::SP, val_next)
+                }
+                Address::Register(Reg::HL) => {
+                    cpu.tick(1)?;
+                    cpu.set_reg16(Reg::HL, val_next)
+                }
+                _ => Err("AddStack destination".to_string()),
+            }
         }
         Operation::Reset(addr) => {
             cpu.tick(1)?;

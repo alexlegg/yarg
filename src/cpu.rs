@@ -387,6 +387,11 @@ impl Cpu {
                 let addr = self.get_reg16(r)?;
                 self.read_mem8(addr)
             }
+            Address::ExtendedIndirect(r) => {
+                self.tick(1)?;
+                let addr = 0xff00 | (self.get_reg8(r)? as u16);
+                self.read_mem8(addr)
+            }
             Address::Register(r) => self.get_reg8(r),
             Address::Extended(e) => {
                 self.tick(2)?;
