@@ -152,17 +152,14 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
                     cpu.tick(2)?;
                     Ok(imm)
                 }
-                Address::StackRelative(rel) => {
-                    cpu.tick(2)?;
-                    let e: i8 = (rel as i8) + 2;
-                    let sp = cpu.get_reg16(Reg::SP)?;
-                    Ok((sp as i16).wrapping_add(e.into()) as u16)
-                }
                 _ => Err("Load16 source".to_string()),
             }?;
             match destination {
                 Address::Register(r) => cpu.set_reg16(r, src),
-                Address::Immediate(addr) => cpu.write_mem16(addr, src),
+                Address::Immediate(addr) => {
+                    cpu.tick(3)?;
+                    cpu.write_mem16(addr, src)
+                }
                 _ => Err("Load16 destination".to_string()),
             }
         }
@@ -411,7 +408,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             Ok(())
         }
         Operation::AddStack(destination, source) => {
-            cpu.tick(3)?;
+            cpu.tick(2)?;
             let src = match source {
                 Address::StackRelative(rel) => Ok(rel as i8 as u16),
                 _ => Err("AddStack source".to_string()),
@@ -424,11 +421,11 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::H, (sp & 0x000f) + (src & 0x000f) > 0x000f);
             cpu.set_flag(Flag::C, (sp & 0x00ff) + (src & 0x00ff) > 0x00ff);
             match destination {
-                Address::Register(Reg::SP) => cpu.set_reg16(Reg::SP, val_next),
-                Address::Register(Reg::HL) => {
+                Address::Register(Reg::SP) => {
                     cpu.tick(1)?;
-                    cpu.set_reg16(Reg::HL, val_next)
+                    cpu.set_reg16(Reg::SP, val_next)
                 }
+                Address::Register(Reg::HL) => cpu.set_reg16(Reg::HL, val_next),
                 _ => Err("AddStack destination".to_string()),
             }
         }
