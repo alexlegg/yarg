@@ -1,3 +1,4 @@
+mod cartridge;
 mod cpu;
 mod emulator;
 mod joypad;
@@ -33,7 +34,11 @@ fn main() {
         None
     };
     if let Some(rom_fn) = args.last() {
-        let emu = emulator::Emulator::new(bootrom_fn, rom_fn);
-        sdl::init(emu, show_vram);
+        println!("test1");
+        if let Ok(emu) = emulator::Emulator::new(bootrom_fn, rom_fn) {
+            println!("test2");
+            sdl::init(emu, show_vram);
+            panic!("test");
+        }
     }
 }

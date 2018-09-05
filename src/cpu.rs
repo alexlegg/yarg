@@ -1,3 +1,4 @@
+use cartridge::Cartridge;
 use joypad::Joypad;
 use opcode::{Address, Condition};
 use ppu::Ppu;
@@ -45,22 +46,21 @@ pub struct Cpu {
     // Work RAM: 8 banks of 4kb.
     // Bank 0: 0xc000 - 0xcfff
     // Switchable bank 1-7: 0xd000 - 0xdfff
-    wram: [[u8; 0x1000]; 8],
+    wram: Vec<Vec<u8>>,
     wram_bank: usize,
 
     // High RAM: 0xff80 - 0xfffe
-    hram: [u8; 0x7f],
+    hram: Vec<u8>,
 
     bootrom: Option<Vec<u8>>,
     bootrom_enabled: bool,
-
-    rom: Vec<u8>,
 
     pub interrupt_master_enable: bool,
     interrupt_enable: u8,
     interrupt_flag: u8,
 
     // TODO refactor
+    cartridge: Cartridge,
     pub ppu: Ppu,
     timer: Timer,
     pub joypad: Joypad,
@@ -97,6 +97,7 @@ pub trait TrapHandler {
 impl Cpu {
     pub fn new(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Cpu {
         let has_bootrom = bootrom.is_some();
+        let cartridge = Cartridge::new(rom);
         Cpu {
             a: 0x01,
             f: 0x00,
@@ -109,15 +110,16 @@ impl Cpu {
             pc: if has_bootrom { 0x0000 } else { 0x0100 },
             sp: 0xfffe,
 
-            wram: [[0; 0x1000]; 8],
+            wram: vec![vec![0; 0x1000]; 8],
             wram_bank: 1,
-            hram: [0; 0x7f],
+            hram: vec![0; 0x7f],
             bootrom: bootrom,
             bootrom_enabled: has_bootrom,
-            rom: rom,
             interrupt_master_enable: false,
             interrupt_enable: 0,
             interrupt_flag: 0,
+
+            cartridge: cartridge,
             ppu: Ppu::new(),
             timer: Timer::new(),
             joypad: Joypad::new(),
@@ -254,7 +256,7 @@ impl Cpu {
             }
             return Err("Bootrom is enabled but there is no bootrom".to_string());
         } else if addr <= 0x7fff {
-            return Ok(self.rom[addr as usize]);
+            return self.cartridge.read(addr);
         } else if addr >= 0xc000 && addr <= 0xcfff {
             return Ok(self.wram[0][(addr - 0xc000) as usize]);
         } else if addr >= 0xd000 && addr <= 0xdfff {
@@ -284,19 +286,9 @@ impl Cpu {
 
     pub fn write_mem8(&mut self, addr: u16, val: u8) -> Result<(), String> {
         //println!("write_mem8 {:#06x} to {:#04x}", addr, val);
-        if addr <= 0x1fff {
-            // RAM enable/disable.
-            // Ignore for now.
-            return Ok(());
-        } else if addr >= 0x2000 && addr <= 0x3fff {
+        if addr <= 0x3fff {
             // ROM bank select.
-            if val != 0x00 && val != 0x01 {
-                return Err(format!(
-                    "ROM bank other than 1 selected by write to {:#06x}",
-                    addr
-                ));
-            }
-            return Ok(());
+            return self.cartridge.write(addr, val);
         } else if addr >= 0x8000 && addr <= 0x9fff {
             return self.ppu.write(addr, val);
         } else if addr >= 0xc000 && addr <= 0xcfff {

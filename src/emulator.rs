@@ -17,18 +17,20 @@ pub struct Emulator {
 }
 
 impl Emulator {
-    pub fn new(bootrom_fn: Option<&str>, rom_fn: &str) -> Emulator {
+    pub fn new(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<Emulator, String> {
+        println!("emu1");
         let bootrom = bootrom_fn.map(|f| fs::read(f).unwrap());
-        let rom = fs::read(rom_fn).unwrap();
+        let rom: Vec<u8> = fs::read(rom_fn).unwrap();
+        let cpu = Cpu::new(bootrom, rom);
         let mut emu = Emulator {
             instruction_stream: VecDeque::with_capacity(DEBUG_STREAM_SIZE),
-            cpu: Cpu::new(bootrom, rom),
+            cpu: cpu,
             breakpoint: false,
         };
         for _ in 0..DEBUG_STREAM_SIZE {
             emu.instruction_stream.push_back((0, Operation::Nop));
         }
-        return emu;
+        return Ok(emu);
     }
 
     pub fn emu_loop(&mut self, joypad: JoypadInput) -> Result<(), String> {
@@ -109,6 +111,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
 
     match inst {
         Operation::Nop => Ok(()),
+        Operation::Stop => Ok(()),
         Operation::Halt => {
             cpu.is_halted = true;
             Ok(())
