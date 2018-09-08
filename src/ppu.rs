@@ -36,15 +36,15 @@ pub struct Ppu {
     bad_timer: u64,
     lcdc: u8,
     bg_palette: u8,
-    tiles: [[u8; 16]; 384],
-    bg_tile_map: [[u8; 32]; 32],
+    tiles: Vec<[u8; 16]>,
+    bg_tile_map: Vec<[u8; 32]>,
     scroll_x: u8,
     scroll_y: u8,
-    sprite_attributes: [SpriteAttributeTable; 40],
+    sprite_attributes: Vec<SpriteAttributeTable>,
     sprite_palette0: u8,
     sprite_palette1: u8,
 
-    pub screen_buffer: [u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE],
+    pub screen_buffer: Box<[u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE]>,
     draw_buffer: bool,
 
     tile_data_dirty: bool,
@@ -64,14 +64,16 @@ impl Ppu {
             bad_timer: 0,
             lcdc: 0,
             bg_palette: 0,
-            tiles: [[0; 16]; 384],
-            bg_tile_map: [[0; 32]; 32],
+            tiles: vec![[0; 16]; 384],
+            bg_tile_map: vec![[0; 32]; 32],
             scroll_x: 0,
             scroll_y: 0,
-            sprite_attributes: [SpriteAttributeTable::new(); 40],
+            sprite_attributes: vec![SpriteAttributeTable::new(); 40],
             sprite_palette0: 0,
             sprite_palette1: 0,
-            screen_buffer: [0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
+            screen_buffer: Box::new(
+                [0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
+            ),
             draw_buffer: false,
             tile_data_dirty: false,
         }
@@ -190,6 +192,9 @@ impl Ppu {
 
     fn mode(&self) -> Mode {
         // TODO Probably faster to just store the mode and update in tick().
+        if self.lcdc & LCDC_DISPLAY_ENABLE == 0 {
+            return Mode::HBlank;
+        }
         if self.bad_timer > SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
             return Mode::VBlank;
         }
@@ -210,6 +215,7 @@ impl TrapHandler for Ppu {
         match addr {
             0xff40 => Ok(self.lcdc),
             0xff41 => {
+                // STAT
                 let val = match self.mode() {
                     Mode::HBlank => 0b00,
                     Mode::VBlank => 0b01,

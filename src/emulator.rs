@@ -19,7 +19,6 @@ pub struct Emulator {
 
 impl Emulator {
     pub fn new(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<Emulator, String> {
-        println!("emu1");
         let bootrom = bootrom_fn.map(|f| fs::read(f).unwrap());
         let rom: Vec<u8> = fs::read(rom_fn).unwrap();
         let cpu = Cpu::new(bootrom, rom);
@@ -49,7 +48,7 @@ impl Emulator {
     }
 
     pub fn screen_buffer(&self) -> &[u8] {
-        return &self.cpu.ppu.screen_buffer;
+        return &*self.cpu.ppu.screen_buffer;
     }
 
     pub fn should_draw(&mut self) -> bool {
@@ -101,12 +100,12 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             emu.at_breakpoint = false;
         } else {
             emu.at_breakpoint = true;
-            return Err("Breakpoint".to_string());
+            return Err(format!("Breakpoint {:#06x}", pc));
         }
     }
 
     /*
-    if pc >= 0xdef8 && pc <= 0xdefa {
+    if pc >= 0x0b7b && pc <= 0x0b7f {
 	    cpu.dump_regs();
 	    println!("{:#06x}: {:?}", pc, inst);
   	}

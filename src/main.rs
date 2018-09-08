@@ -12,7 +12,8 @@ use std::env;
 use std::io;
 use std::io::Write;
 
-fn debugger_cli(mut emu: Emulator) {
+fn debugger_cli(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<(), String> {
+    let mut emu = Emulator::new(bootrom_fn, rom_fn)?;
     loop {
         print!("> ");
         let _ = io::stdout().flush();
@@ -35,6 +36,9 @@ fn debugger_cli(mut emu: Emulator) {
                     Some("run") | Some("r") => {
                         sdl::init(&mut emu, false);
                     }
+                    Some("reset") | Some("e") => {
+                        emu = emulator::Emulator::new(bootrom_fn, rom_fn)?;
+                    }
                     Some("quit") | Some("q") => break,
                     _ => println!("Unrecognised command"),
                 }
@@ -45,6 +49,7 @@ fn debugger_cli(mut emu: Emulator) {
             }
         }
     }
+    Ok(())
 }
 
 fn main() {
@@ -77,12 +82,10 @@ fn main() {
         None
     };
     if let Some(rom_fn) = args.last() {
-        if let Ok(mut emu) = emulator::Emulator::new(bootrom_fn, rom_fn) {
-            if debugger {
-                debugger_cli(emu);
-            } else {
-                sdl::init(&mut emu, show_vram);
-            }
+        if debugger {
+            debugger_cli(bootrom_fn, rom_fn);
+        } else if let Ok(mut emu) = emulator::Emulator::new(bootrom_fn, rom_fn) {
+            sdl::init(&mut emu, show_vram);
         }
     }
 }

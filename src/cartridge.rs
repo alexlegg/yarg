@@ -55,8 +55,12 @@ impl TrapHandler for Cartridge {
             }
             Ok(())
         } else if addr >= 0xa000 && addr <= 0xbfff {
-            self.ram[(addr - 0xa000) as usize] = val;
-            Ok(())
+            if self.ram.len() != 0 {
+                self.ram[(addr - 0xa000) as usize] = val;
+                Ok(())
+            } else {
+                Err(format!("Bad write to ram addr {:#06x}", addr))
+            }
         } else {
             Err(format!("Bad write to Cartridge {:x}", addr))
         }

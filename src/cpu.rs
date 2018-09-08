@@ -311,6 +311,9 @@ impl Cpu {
             return Ok(());
         } else if addr == 0xff00 {
             return self.joypad.write(addr, val);
+        } else if addr >= 0xff30 && addr <= 0xff3f {
+            // Ignore waveform registers
+            return Ok(());
         } else if addr >= 0xff40 && addr <= 0xff45 {
             return self.ppu.write(addr, val);
         } else if addr == 0xff46 {
@@ -501,9 +504,12 @@ impl Cpu {
 
     pub fn check_for_interrupt(&mut self) -> Result<(), String> {
         if let Some(irq) = self.active_interrupt() {
+            self.tick(2)?;
             let pc = self.pc;
             self.push_stack(pc)?;
+            self.tick(2)?;
             self.pc = interrupt_handler_addr(irq);
+            self.tick(1)?;
             self.ack_interrupt(irq);
             self.is_halted = false;
             self.interrupt_master_enable = false;
