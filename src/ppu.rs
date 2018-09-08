@@ -109,12 +109,20 @@ impl Ppu {
                 if x + 8 < sprite.x_position || x >= sprite.x_position {
                     continue;
                 }
+                if sprite.flags & (1 << 7) > 0 {
+                    continue;
+                }
                 let s_x = x + 8 - sprite.x_position;
                 let tile_y = (((y + 16 - sprite.y_position) % 8) << 1) as usize;
                 // TODO Handle sprites of height 16.
                 let data0 = self.tiles[sprite.tile_number as usize][tile_y];
                 let data1 = self.tiles[sprite.tile_number as usize][tile_y + 1];
-                let colour_val = (bit(data1, 7 - (s_x % 8)) << 1) | bit(data0, 7 - (s_x % 8));
+                let x_pixel = if sprite.flags & (1 << 5) == 0 {
+                    7 - (s_x % 8)
+                } else {
+                    s_x % 8
+                };
+                let colour_val = (bit(data1, x_pixel) << 1) | bit(data0, x_pixel);
                 // TODO palette
                 let palette: u8 = if sprite.flags & (1 << 3) == 0 {
                     self.sprite_palette0
@@ -222,6 +230,9 @@ impl TrapHandler for Ppu {
 
     fn write(&mut self, addr: u16, val: u8) -> Result<(), String> {
         if addr == 0xff40 {
+            if (self.lcdc & (1 << 7) == 0) && (val & (1 << 7) > 0) {
+                self.bad_timer = 0;
+            }
             println!("write to LCDC {:x}", val);
             self.lcdc = val;
         } else if addr == 0xff41 {

@@ -11,7 +11,7 @@ use joypad::JoypadInput;
 
 use emulator::Emulator;
 
-pub fn init(mut emu: Emulator, show_vram: bool) {
+pub fn init(emu: &mut Emulator, show_vram: bool) {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 

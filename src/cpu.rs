@@ -257,6 +257,8 @@ impl Cpu {
             return Err("Bootrom is enabled but there is no bootrom".to_string());
         } else if addr <= 0x7fff {
             return self.cartridge.read(addr);
+        } else if addr >= 0xa000 && addr <= 0xbfff {
+            return self.cartridge.read(addr);
         } else if addr >= 0xc000 && addr <= 0xcfff {
             return Ok(self.wram[0][(addr - 0xc000) as usize]);
         } else if addr >= 0xd000 && addr <= 0xdfff {
@@ -287,10 +289,11 @@ impl Cpu {
     pub fn write_mem8(&mut self, addr: u16, val: u8) -> Result<(), String> {
         //println!("write_mem8 {:#06x} to {:#04x}", addr, val);
         if addr <= 0x3fff {
-            // ROM bank select.
             return self.cartridge.write(addr, val);
         } else if addr >= 0x8000 && addr <= 0x9fff {
             return self.ppu.write(addr, val);
+        } else if addr >= 0xa000 && addr <= 0xbfff {
+            return self.cartridge.write(addr, val);
         } else if addr >= 0xc000 && addr <= 0xcfff {
             self.wram[0][(addr - 0xc000) as usize] = val;
             return Ok(());
@@ -339,7 +342,7 @@ impl Cpu {
             self.interrupt_enable = val;
             return Ok(());
         } else {
-            //println!("Write to unknown IO address {:#06x}", addr);
+            println!("Write to unknown IO address {:#06x}", addr);
             return Ok(());
         }
     }

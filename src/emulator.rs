@@ -13,7 +13,8 @@ const DEBUG_STREAM_SIZE: usize = 15;
 pub struct Emulator {
     instruction_stream: VecDeque<(u16, Operation)>,
     cpu: Cpu,
-    breakpoint: bool,
+    breakpoints: Vec<u16>,
+    at_breakpoint: bool,
 }
 
 impl Emulator {
@@ -25,7 +26,8 @@ impl Emulator {
         let mut emu = Emulator {
             instruction_stream: VecDeque::with_capacity(DEBUG_STREAM_SIZE),
             cpu: cpu,
-            breakpoint: false,
+            breakpoints: Vec::new(),
+            at_breakpoint: false,
         };
         for _ in 0..DEBUG_STREAM_SIZE {
             emu.instruction_stream.push_back((0, Operation::Nop));
@@ -37,16 +39,13 @@ impl Emulator {
         self.cpu.joypad.set_state(joypad);
         let ret = cpu_loop(self);
         if ret.is_err() {
-            println!("");
-            self.cpu.dump_stack();
-            self.cpu.dump_regs();
-            println!("");
-            println!("Dumping instruction stream");
-            for (pc, inst) in &self.instruction_stream {
-                println!("{:#06x}: {:?}", pc, inst);
-            }
+            self.debug_dump();
         }
         ret
+    }
+
+    pub fn add_breakpoint(&mut self, bp: u16) {
+        self.breakpoints.push(bp);
     }
 
     pub fn screen_buffer(&self) -> &[u8] {
@@ -60,6 +59,17 @@ impl Emulator {
     pub fn get_tile_data(&mut self) -> Option<Box<[u8; 128 * 192 * 3]>> {
         return self.cpu.ppu.get_tile_data();
     }
+
+    pub fn debug_dump(&self) {
+        println!("");
+        self.cpu.dump_stack();
+        self.cpu.dump_regs();
+        println!("");
+        println!("Dumping instruction stream");
+        for (pc, inst) in &self.instruction_stream {
+            println!("{:#06x}: {:?}", pc, inst);
+        }
+    }
 }
 
 fn half_carried(curr: u8, val: u8) -> bool {
@@ -71,10 +81,6 @@ fn half_borrowed(curr: u8, val: u8) -> bool {
 }
 
 fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
-    if emu.breakpoint {
-        return Ok(());
-    }
-
     let cpu = &mut emu.cpu;
 
     cpu.check_for_interrupt()?;
@@ -88,14 +94,16 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     }
 
     let pc = cpu.get_reg16(Reg::PC)?;
-
-    /* if pc == 0x50 {
-		emu.breakpoint = true;
-        println!("hit breakpoint");
-		return Ok(());
-	} */
-
     let (inst_size, inst) = get_inst(&cpu)?;
+
+    if emu.breakpoints.contains(&pc) {
+        if emu.at_breakpoint {
+            emu.at_breakpoint = false;
+        } else {
+            emu.at_breakpoint = true;
+            return Err("Breakpoint".to_string());
+        }
+    }
 
     /*
     if pc >= 0xdef8 && pc <= 0xdefa {
@@ -104,7 +112,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
   	}
     */
 
-    cpu.set_pc(pc + inst_size)?;
+    cpu.set_pc(pc.wrapping_add(inst_size))?;
 
     emu.instruction_stream.pop_front();
     emu.instruction_stream.push_back((pc, inst));
