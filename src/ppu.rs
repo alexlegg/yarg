@@ -146,7 +146,7 @@ impl Ppu {
         let tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize];
         let tile_y = ((bg_y % 8) << 1) as usize;
         let mut tile_num = tile as usize;
-        if self.lcdc & LCDC_TILE_SELECT == 0 && tile <= 0x80 {
+        if self.lcdc & LCDC_TILE_SELECT == 0 && tile < 0x80 {
             tile_num += 0x100;
         }
         let data0 = self.tiles[tile_num][tile_y];

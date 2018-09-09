@@ -1,5 +1,4 @@
 extern crate sdl2;
-extern crate time;
 
 use self::sdl2::event::Event;
 use self::sdl2::keyboard::Keycode;
@@ -7,7 +6,8 @@ use self::sdl2::pixels::Color;
 use self::sdl2::pixels::PixelFormatEnum;
 use self::sdl2::rect::Rect;
 use joypad::JoypadInput;
-//use self::time::{Duration, PreciseTime};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 use emulator::Emulator;
 
@@ -47,9 +47,10 @@ pub fn init(emu: &mut Emulator, show_vram: bool) {
 
     let mut joypad: JoypadInput = JoypadInput::new();
 
+    let frame_duration = Duration::from_secs(1) / 60;
+
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
-        // get the inputs here
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -125,12 +126,26 @@ pub fn init(emu: &mut Emulator, show_vram: bool) {
             }
         }
 
-        match emu.emu_loop(joypad) {
-            Ok(_) => (),
-            Err(s) => {
-                println!("{:?}", s);
-                break 'running;
+        let start = Instant::now();
+        while !emu.should_draw() {
+            match emu.emu_loop(joypad) {
+                Ok(_) => (),
+                Err(s) => {
+                    println!("{:?}", s);
+                    break 'running;
+                }
             }
+        }
+        texture.update(None, emu.screen_buffer(), 3 * 160).unwrap();
+        canvas
+            .copy(&texture, None, Some(Rect::new(0, 0, 320, 288)))
+            .unwrap();
+        canvas.present();
+        let duration = Instant::now() - start;
+        if duration < frame_duration {
+            sleep(frame_duration - duration);
+        } else {
+            println!("Warning: slow frame ({:?})", duration);
         }
 
         if let Some(buf) = emu.get_tile_data() {
@@ -140,18 +155,5 @@ pub fn init(emu: &mut Emulator, show_vram: bool) {
                 .unwrap();
             canvas.present();
         }
-
-        //let start = PreciseTime::now();
-
-        if emu.should_draw() {
-            texture.update(None, emu.screen_buffer(), 3 * 160).unwrap();
-            canvas
-                .copy(&texture, None, Some(Rect::new(0, 0, 320, 288)))
-                .unwrap();
-            canvas.present();
-        }
-
-        //let duration = start.to(PreciseTime::now());
-        //println!("a {:?}", duration);
     }
 }
