@@ -257,6 +257,8 @@ impl Cpu {
             return Err("Bootrom is enabled but there is no bootrom".to_string());
         } else if addr <= 0x7fff {
             return self.cartridge.read(addr);
+        } else if addr >= 0x8000 && addr <= 0x9fff {
+            return self.ppu.read(addr);
         } else if addr >= 0xa000 && addr <= 0xbfff {
             return self.cartridge.read(addr);
         } else if addr >= 0xc000 && addr <= 0xcfff {
@@ -334,12 +336,10 @@ impl Cpu {
             // Sound IO. Ignored
             Ok(())
         } else if addr == 0xff0f {
-            println!("Write IF to {:?}", val);
             // IF - Interrupt Flag
             self.interrupt_flag = val;
             Ok(())
         } else if addr == 0xffff {
-            println!("Write IE to {:?}", val);
             // IE - Interrupt Enable
             self.interrupt_enable = val;
             Ok(())

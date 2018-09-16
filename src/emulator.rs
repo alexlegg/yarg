@@ -566,7 +566,6 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
             cpu.set_flag(Flag::N, false);
             Ok(())
         }
-        _ => Err("Unrecognised instruction".to_string()),
     }
 }
 

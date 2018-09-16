@@ -1,5 +1,6 @@
 use cpu::Reg;
 use std::fmt;
+use util::bits;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Operation {
@@ -93,10 +94,6 @@ pub enum Condition {
     NonCarry,
     Zero,
     NonZero,
-}
-
-fn bits(high: u8, low: u8, val: u8) -> u8 {
-    (val & ((1 << (high + 1)) - 1)) >> low
 }
 
 fn opcode_reg(opcode: u8) -> Address {

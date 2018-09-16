@@ -6,6 +6,7 @@ mod opcode;
 mod ppu;
 mod sdl;
 mod timer;
+mod util;
 
 use emulator::Emulator;
 use std::env;
@@ -83,7 +84,10 @@ fn main() {
     };
     if let Some(rom_fn) = args.last() {
         if debugger {
-            debugger_cli(bootrom_fn, rom_fn);
+            match debugger_cli(bootrom_fn, rom_fn) {
+                Err(s) => println!("{:?}", s),
+                _ => (),
+            }
         } else if let Ok(mut emu) = emulator::Emulator::new(bootrom_fn, rom_fn) {
             sdl::init(&mut emu, show_vram);
         }

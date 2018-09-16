@@ -1,5 +1,6 @@
 use cpu::Interrupt;
 use cpu::TrapHandler;
+use util::bit_mask;
 
 const SCREEN_WIDTH: u64 = 160;
 const SCREEN_HEIGHT: u64 = 144;
@@ -25,10 +26,10 @@ const LCDC_DISPLAY_PRIORITY : u8									= 1 << 0;
 */
 
 const SPRITE_FLAG_PRIORITY: u8 = 1 << 7;
-const SPRITE_FLAG_Y_FLIP : u8 = 1 << 6;
-const SPRITE_FLAG_X_FLIP : u8 = 1 << 5;
-const SPRITE_FLAG_PALETTE : u8 = 1 << 4;
-const SPRITE_FLAG_BANK : u8 = 1 << 3;
+const SPRITE_FLAG_Y_FLIP: u8 = 1 << 6;
+const SPRITE_FLAG_X_FLIP: u8 = 1 << 5;
+const SPRITE_FLAG_PALETTE: u8 = 1 << 4;
+const SPRITE_FLAG_BANK: u8 = 1 << 3;
 
 #[derive(Copy, Clone, Debug)]
 enum Mode {
@@ -121,8 +122,8 @@ impl Ppu {
                 x_off,
                 bg_y % 8,
                 palette,
-                false /* flip */,
-                false /* transparent */,
+                false, /* flip */
+                false, /* transparent */
                 &mut *self.screen_buffer,
             );
             x += 8 - x_off;
@@ -133,32 +134,41 @@ impl Ppu {
             let sprite_height = self.sprite_size();
             for sprite in self.sprite_attributes.iter() {
                 // TODO: Handle other priority.
-                if sprite.flags & SPRITE_FLAG_PRIORITY > 0 {
+                if bit_mask(SPRITE_FLAG_PRIORITY, sprite.flags) {
                     continue;
                 }
                 if y + 16 < sprite.y_position || y + 16 >= sprite.y_position + sprite_height {
                     continue;
                 }
-                let mut tile_y = (y + 16 - sprite.y_position) % 8;
-                if sprite.flags & SPRITE_FLAG_Y_FLIP > 0 {
+                let mut tile_y = (y + 16 - sprite.y_position) % sprite_height;
+                if bit_mask(SPRITE_FLAG_Y_FLIP, sprite.flags) {
                     tile_y = sprite_height - tile_y - 1;
                 }
-                let palette: u8 = if sprite.flags & SPRITE_FLAG_BANK == 0 {
+                let palette: u8 = if !bit_mask(SPRITE_FLAG_PALETTE, sprite.flags) {
                     self.sprite_palette0
                 } else {
                     self.sprite_palette1
                 };
-                // TODO: Handle sprites of height 16
-                let tile = &self.tiles[sprite.tile_number as usize];
+                let tile = if sprite_height == 16 {
+                    let top_tile = (sprite.tile_number & !1) as usize;
+                    if tile_y < 8 {
+                        &self.tiles[top_tile]
+                    } else {
+                        tile_y -= 8;
+                        &self.tiles[top_tile + 1]
+                    }
+                } else {
+                    &self.tiles[sprite.tile_number as usize]
+                };
                 draw_tile_line(
                     tile,
                     sprite.x_position as isize - 8,
                     y,
-                    0 /* x offset */,
+                    0, /* x offset */
                     tile_y,
                     palette,
-                    sprite.flags & SPRITE_FLAG_X_FLIP > 0,
-                    true /* transparent */,
+                    bit_mask(SPRITE_FLAG_X_FLIP, sprite.flags),
+                    true, /* transparent */
                     &mut *self.screen_buffer,
                 );
             }
@@ -213,6 +223,16 @@ impl Ppu {
 
 impl TrapHandler for Ppu {
     fn read(&self, addr: u16) -> Result<u8, String> {
+        if addr >= 0x8000 && addr <= 0x97ff {
+            let tile_num = ((addr - 0x8000) >> 4) as usize;
+            let byte_num = (addr % 16) as usize;
+            return Ok(self.tiles[tile_num][byte_num]);
+        } else if addr >= 0x9800 && addr <= 0x9bff {
+            let row = ((addr - 0x9800) >> 5) as usize;
+            let col = ((addr - 0x9800) % 32) as usize;
+            return Ok(self.bg_tile_map[row][col]);
+        }
+
         match addr {
             0xff40 => Ok(self.lcdc),
             0xff41 => {
@@ -240,7 +260,6 @@ impl TrapHandler for Ppu {
             if (self.lcdc & (1 << 7) == 0) && (val & (1 << 7) > 0) {
                 self.bad_timer = 0;
             }
-            println!("write to LCDC {:x}", val);
             self.lcdc = val;
         } else if addr == 0xff41 {
             println!("write to STAT {:x}", val);
@@ -256,7 +275,7 @@ impl TrapHandler for Ppu {
         } else if addr == 0xff49 {
             self.sprite_palette1 = val;
         } else if addr >= 0xff40 {
-            println!("Write to PPU {:#06x} {:#04x}", addr, val);
+            //println!("Write to PPU {:#06x} {:#04x}", addr, val);
         } else if addr >= 0x8000 && addr <= 0x97ff {
             let tile_num = ((addr - 0x8000) >> 4) as usize;
             let byte_num = (addr % 16) as usize;

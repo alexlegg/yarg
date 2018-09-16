@@ -10,18 +10,9 @@ pub struct Cartridge {
 
 impl Cartridge {
     pub fn new(rom: Vec<u8>) -> Cartridge {
-        let ram_size = match rom[0x149] {
-            0x00 => 0,
-            0x01 => 2,
-            0x02 => 8,
-            0x03 => 32,
-            0x04 => 128,
-            0x05 => 64,
-            _ => 0,
-        };
         Cartridge {
             rom: rom,
-            ram: vec![0; ram_size * 0x400],
+            ram: vec![0; 0x2000],
             rom_bank: 1,
             ram_bank: 0,
         }
@@ -55,12 +46,8 @@ impl TrapHandler for Cartridge {
             }
             Ok(())
         } else if addr >= 0xa000 && addr <= 0xbfff {
-            if self.ram.len() != 0 {
-                self.ram[(addr - 0xa000) as usize] = val;
-                Ok(())
-            } else {
-                Err(format!("Bad write to ram addr {:#06x}", addr))
-            }
+            self.ram[(addr - 0xa000) as usize] = val;
+            Ok(())
         } else {
             Err(format!("Bad write to Cartridge {:x}", addr))
         }
