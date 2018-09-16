@@ -287,66 +287,64 @@ impl Cpu {
     }
 
     pub fn write_mem8(&mut self, addr: u16, val: u8) -> Result<(), String> {
-        //println!("write_mem8 {:#06x} to {:#04x}", addr, val);
         if addr <= 0x3fff {
-            return self.cartridge.write(addr, val);
+            self.cartridge.write(addr, val)
         } else if addr >= 0x8000 && addr <= 0x9fff {
-            return self.ppu.write(addr, val);
+            self.ppu.write(addr, val)
         } else if addr >= 0xa000 && addr <= 0xbfff {
-            return self.cartridge.write(addr, val);
+            self.cartridge.write(addr, val)
         } else if addr >= 0xc000 && addr <= 0xcfff {
             self.wram[0][(addr - 0xc000) as usize] = val;
-            return Ok(());
+            Ok(())
         } else if addr >= 0xd000 && addr <= 0xdfff {
             self.wram[self.wram_bank][(addr - 0xd000) as usize] = val;
-            return Ok(());
+            Ok(())
         } else if addr >= 0xfe00 && addr <= 0xfe9f {
             // Sprite attribute table
-            return self.ppu.write(addr, val);
+            self.ppu.write(addr, val)
         } else if addr >= 0xfea0 && addr <= 0xfeff {
             // Not usable - Ignore.
-            return Ok(());
+            Ok(())
         } else if addr >= 0xff80 && addr <= 0xfffe {
             self.hram[(addr - 0xff80) as usize] = val;
-            return Ok(());
+            Ok(())
         } else if addr == 0xff00 {
-            return self.joypad.write(addr, val);
+            self.joypad.write(addr, val)
         } else if addr >= 0xff30 && addr <= 0xff3f {
             // Ignore waveform registers
-            return Ok(());
+            Ok(())
         } else if addr >= 0xff40 && addr <= 0xff45 {
-            return self.ppu.write(addr, val);
+            self.ppu.write(addr, val)
         } else if addr == 0xff46 {
             // Handle DMA here
             self.handle_dma_transfer((val as u16) << 8)
         } else if addr >= 0xff47 && addr <= 0xff4b {
-            return self.ppu.write(addr, val);
+            self.ppu.write(addr, val)
         } else if addr == 0xff50 {
             if val & 0b1 == 0b1 {
                 self.bootrom_enabled = false;
             }
-            return Ok(());
+            Ok(())
         } else if addr >= 0xff01 && addr <= 0xff02 {
             // Serial IO. Ignored.
-            return Ok(());
+            Ok(())
         } else if addr >= 0xff04 && addr <= 0xff07 {
-            return self.timer.write(addr, val);
+            self.timer.write(addr, val)
         } else if addr >= 0xff10 && addr <= 0xff26 {
             // Sound IO. Ignored
-            return Ok(());
+            Ok(())
         } else if addr == 0xff0f {
             println!("Write IF to {:?}", val);
             // IF - Interrupt Flag
             self.interrupt_flag = val;
-            return Ok(());
+            Ok(())
         } else if addr == 0xffff {
             println!("Write IE to {:?}", val);
             // IE - Interrupt Enable
             self.interrupt_enable = val;
-            return Ok(());
+            Ok(())
         } else {
-            println!("Write to unknown IO address {:#06x}", addr);
-            return Ok(());
+            Ok(())
         }
     }
 

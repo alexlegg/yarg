@@ -24,6 +24,12 @@ const LCDC_BG_TILE_MAP_DISPLAY_SELECT : u8				= 1 << 3;
 const LCDC_DISPLAY_PRIORITY : u8									= 1 << 0;
 */
 
+const SPRITE_FLAG_PRIORITY: u8 = 1 << 7;
+const SPRITE_FLAG_Y_FLIP : u8 = 1 << 6;
+const SPRITE_FLAG_X_FLIP : u8 = 1 << 5;
+const SPRITE_FLAG_PALETTE : u8 = 1 << 4;
+const SPRITE_FLAG_BANK : u8 = 1 << 3;
+
 #[derive(Copy, Clone, Debug)]
 enum Mode {
     HBlank,
@@ -88,80 +94,75 @@ impl Ppu {
         }
     }
 
-    // TODO Don't do this pixel by pixel (obviously).
-    // TODO Refactor this horrible mess
-    fn draw_pixel(&mut self, x: u8, y: u8) {
+    fn sprite_size(&self) -> u8 {
+        if self.lcdc & LCDC_SPRITE_SIZE == 0 {
+            8
+        } else {
+            16
+        }
+    }
+
+    fn draw_line(&mut self, y: u8) {
+        // First draw the background
+        let palette = self.bg_palette;
+        let mut x: u8 = 0;
+        while x < SCREEN_WIDTH as u8 {
+            let bg_x = x.wrapping_add(self.scroll_y);
+            let bg_y = y.wrapping_add(self.scroll_x);
+            let mut tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize] as usize;
+            if self.lcdc & LCDC_TILE_SELECT == 0 && tile < 0x80 {
+                tile += 0x100;
+            }
+            let x_off = bg_x % 8;
+            draw_tile_line(
+                &self.tiles[tile],
+                x as isize,
+                y,
+                x_off,
+                bg_y % 8,
+                palette,
+                false /* flip */,
+                false /* transparent */,
+                &mut *self.screen_buffer,
+            );
+            x += 8 - x_off;
+        }
+
+        // Next draw sprites
         if self.lcdc & LCDC_SPRITE_ENABLE > 0 {
-            let sprite_height = if self.lcdc & LCDC_SPRITE_SIZE == 0 {
-                8
-            } else {
-                16
-            };
-            let mut colour: Option<u32> = None;
+            let sprite_height = self.sprite_size();
             for sprite in self.sprite_attributes.iter() {
-                if sprite.y_position == 0 || sprite.y_position as u64 >= SCREEN_HEIGHT + 16 {
-                    continue;
-                }
-                if sprite.x_position == 0 || sprite.x_position as u64 >= SCREEN_WIDTH + 8 {
+                // TODO: Handle other priority.
+                if sprite.flags & SPRITE_FLAG_PRIORITY > 0 {
                     continue;
                 }
                 if y + 16 < sprite.y_position || y + 16 >= sprite.y_position + sprite_height {
                     continue;
                 }
-                if x + 8 < sprite.x_position || x >= sprite.x_position {
-                    continue;
+                let mut tile_y = (y + 16 - sprite.y_position) % 8;
+                if sprite.flags & SPRITE_FLAG_Y_FLIP > 0 {
+                    tile_y = sprite_height - tile_y - 1;
                 }
-                if sprite.flags & (1 << 7) > 0 {
-                    continue;
-                }
-                let s_x = x + 8 - sprite.x_position;
-                let tile_y = (((y + 16 - sprite.y_position) % 8) << 1) as usize;
-                // TODO Handle sprites of height 16.
-                let data0 = self.tiles[sprite.tile_number as usize][tile_y];
-                let data1 = self.tiles[sprite.tile_number as usize][tile_y + 1];
-                let x_pixel = if sprite.flags & (1 << 5) == 0 {
-                    7 - (s_x % 8)
-                } else {
-                    s_x % 8
-                };
-                let colour_val = (bit(data1, x_pixel) << 1) | bit(data0, x_pixel);
-                // TODO palette
-                let palette: u8 = if sprite.flags & (1 << 3) == 0 {
+                let palette: u8 = if sprite.flags & SPRITE_FLAG_BANK == 0 {
                     self.sprite_palette0
                 } else {
                     self.sprite_palette1
                 };
-                if colour_val != 0 {
-                    colour = Some(get_palette_colour(colour_val, palette));
-                }
-            }
-            // If we didn't find a sprite pixel, or it was transparent then fall through to background.
-            if let Some(c) = colour {
-                self.put_pixel(x, y, c);
-                return;
+                // TODO: Handle sprites of height 16
+                let tile = &self.tiles[sprite.tile_number as usize];
+                draw_tile_line(
+                    tile,
+                    sprite.x_position as isize - 8,
+                    y,
+                    0 /* x offset */,
+                    tile_y,
+                    palette,
+                    sprite.flags & SPRITE_FLAG_X_FLIP > 0,
+                    true /* transparent */,
+                    &mut *self.screen_buffer,
+                );
             }
         }
-        let bg_x = x.wrapping_add(self.scroll_y);
-        let bg_y = y.wrapping_add(self.scroll_x);
-        let tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize];
-        let tile_y = ((bg_y % 8) << 1) as usize;
-        let mut tile_num = tile as usize;
-        if self.lcdc & LCDC_TILE_SELECT == 0 && tile < 0x80 {
-            tile_num += 0x100;
-        }
-        let data0 = self.tiles[tile_num][tile_y];
-        let data1 = self.tiles[tile_num][tile_y + 1];
-        let colour_val = (bit(data1, 7 - (bg_x % 8)) << 1) | bit(data0, 7 - (bg_x % 8));
-        let colour = get_palette_colour(colour_val, self.bg_palette);
-        self.put_pixel(x, y, colour);
-    }
-
-    fn put_pixel(&mut self, x: u8, y: u8, colour: u32) {
-        let offset =
-            (y as usize * SCREEN_WIDTH as usize * PIXEL_SIZE as usize) + (x as usize * PIXEL_SIZE);
-        self.screen_buffer[offset] = (colour & 0xff) as u8;
-        self.screen_buffer[offset + 1] = ((colour >> 8) & 0xff) as u8;
-        self.screen_buffer[offset + 2] = ((colour >> 16) & 0xff) as u8;
     }
 
     pub fn get_tile_data(&mut self) -> Option<Box<[u8; 128 * 192 * PIXEL_SIZE]>> {
@@ -171,9 +172,9 @@ impl Ppu {
         self.tile_data_dirty = false;
         let mut buffer = Box::new([0; 128 * 192 * PIXEL_SIZE]);
         for tile in 0..384 {
+            let row_y = (tile / 16) * 8;
+            let col_x = (tile % 16) * 8;
             for ty in (0..16).step_by(2) {
-                let row_y = (tile / 16) * 8;
-                let col_x = (tile % 16) * 8;
                 let data0 = self.tiles[tile][ty];
                 let data1 = self.tiles[tile][ty + 1];
                 for x in 0..8 {
@@ -286,14 +287,13 @@ impl TrapHandler for Ppu {
             self.bad_timer += 1;
             self.bad_timer %= VERTICAL_LINE_CYCLES;
 
-            if let Mode::PixelTransfer = self.mode() {
-                let x = ((self.bad_timer % HORIZONTAL_LINE_CYCLES) - OAM_SEARCH_CYCLES) * 4;
-                let y = self.bad_timer / HORIZONTAL_LINE_CYCLES;
-                for i in x..(x + 4) {
-                    if i < SCREEN_WIDTH && y < SCREEN_HEIGHT {
-                        self.draw_pixel(i as u8, y as u8);
-                    }
-                }
+            // Draw line on last pixel transfer cycle
+            if self.bad_timer % HORIZONTAL_LINE_CYCLES
+                == OAM_SEARCH_CYCLES + PIXEL_TRANSFER_CYCLES - 1
+                && self.bad_timer < SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES
+            {
+                let y = (self.bad_timer / HORIZONTAL_LINE_CYCLES) as u8;
+                self.draw_line(y);
             }
 
             if self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
@@ -332,5 +332,43 @@ fn get_palette_colour(val: u8, palette: u8) -> u32 {
         0b10 => 0x969696,
         0b11 => 0x000000,
         _ => 0xffffff,
+    }
+}
+
+fn put_pixel(screen_buffer: &mut [u8], x: u8, y: u8, colour: u32) {
+    let offset =
+        (y as usize * SCREEN_WIDTH as usize * PIXEL_SIZE as usize) + (x as usize * PIXEL_SIZE);
+    screen_buffer[offset] = (colour & 0xff) as u8;
+    screen_buffer[offset + 1] = ((colour >> 8) & 0xff) as u8;
+    screen_buffer[offset + 2] = ((colour >> 16) & 0xff) as u8;
+}
+
+fn draw_tile_line(
+    tile: &[u8; 16],
+    x: isize,
+    y: u8,
+    x_off: u8,
+    line: u8,
+    palette: u8,
+    flip: bool,
+    transparency: bool,
+    buf: &mut [u8],
+) {
+    let data0 = tile[(line << 1) as usize];
+    let data1 = tile[(line << 1) as usize + 1];
+    for tile_x in x_off..8 {
+        let x_pixel = if flip { tile_x } else { 7 - tile_x };
+        let colour_val = (bit(data1, x_pixel) << 1) | bit(data0, x_pixel);
+        if transparency && colour_val == 0 {
+            continue;
+        }
+        let colour = get_palette_colour(colour_val, palette);
+        let screen_x = x + tile_x as isize - x_off as isize;
+        if screen_x < 0 {
+            continue;
+        } else if screen_x >= SCREEN_WIDTH as isize {
+            break;
+        }
+        put_pixel(buf, screen_x as u8, y, colour);
     }
 }
