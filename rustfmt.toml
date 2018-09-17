@@ -1,0 +1,5 @@
+tab_spaces = 2
+
+# TODO: Enable these when they're stable
+# indent_style = "Visual"
+# wrap_comments = true
