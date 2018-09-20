@@ -3,6 +3,14 @@ name = "yarg"
 version = "0.1.0"
 authors = ["Alex Legg <alex@legg.info>"]
 
+[[bin]]
+name = "yarg"
+path = "src/main.rs"
+
+[[bin]]
+name = "yargas"
+path = "src/asm/main.rs"
+
 [dependencies]
 sdl2 = { version = "0.31.0", features = ["bundled"] }
 
