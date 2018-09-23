@@ -1,8 +1,8 @@
+mod asm;
 mod cartridge;
 mod cpu;
 mod emulator;
 mod joypad;
-mod opcode;
 mod ppu;
 mod sdl;
 mod timer;

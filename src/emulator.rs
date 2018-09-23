@@ -1,10 +1,7 @@
+use asm::operation::{Address, Condition, Operation, Reg};
 use cpu::Cpu;
 use cpu::Flag;
-use cpu::Reg;
 use joypad::JoypadInput;
-use opcode::Address;
-use opcode::Condition;
-use opcode::Operation;
 use std::collections::VecDeque;
 use std::fs;
 
@@ -569,7 +566,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
   }
 }
 
-fn get_inst(cpu: &Cpu) -> Result<(u16, ::opcode::Operation), String> {
+fn get_inst(cpu: &Cpu) -> Result<(u16, Operation), String> {
   let pc = cpu.get_reg16(Reg::PC)?;
   let opcode = cpu.read_mem8(pc)?;
   let get_operand = |operand| cpu.read_mem8(pc + operand);

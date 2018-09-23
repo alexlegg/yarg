@@ -1,6 +1,6 @@
+use asm::operation::{Address, Condition, Reg};
 use cartridge::Cartridge;
 use joypad::Joypad;
-use opcode::{Address, Condition};
 use ppu::Ppu;
 use timer::Timer;
 
@@ -67,23 +67,6 @@ pub struct Cpu {
 
   // TODO refactor
   pub is_halted: bool,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum Reg {
-  A,
-  B,
-  C,
-  D,
-  E,
-  H,
-  L,
-  AF,
-  BC,
-  DE,
-  HL,
-  SP,
-  PC,
 }
 
 pub trait TrapHandler {
