@@ -1,6 +1,7 @@
 use std::fmt;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum Operation {
   Nop,
   Stop,
@@ -50,7 +51,8 @@ pub enum Operation {
 }
 
 // TODO rename to Operand
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum Address {
   Register(Reg),
   Indirect(Reg),
@@ -85,7 +87,8 @@ impl fmt::Debug for Address {
   }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum Condition {
   Unconditional,
   Carry,
@@ -94,7 +97,8 @@ pub enum Condition {
   NonZero,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum Reg {
   A,
   B,

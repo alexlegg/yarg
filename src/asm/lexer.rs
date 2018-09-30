@@ -1,4 +1,7 @@
-#[derive(Debug, Clone, PartialEq)]
+use std::iter::Peekable;
+use std::str::Chars;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
   Whitespace,
   Newline,
@@ -10,11 +13,24 @@ pub enum Token {
   LineCommentStart,
   CommentStart,
   CommentEnd,
-  Identifier(String),
+  Word(String),
 }
 
-use std::iter::Peekable;
-use std::str::Chars;
+impl Token {
+  pub fn is_alphanumeric_word(&self) -> bool {
+    match self {
+      Token::Word(_) => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_numeric_word(&self) -> bool {
+    match self {
+      Token::Word(_) => true,
+      _ => false,
+    }
+  }
+}
 
 #[derive(Debug, Clone)]
 pub struct Lexer<'a> {
@@ -72,7 +88,7 @@ impl<'a> Iterator for Lexer<'a> {
         peeking_take_while(c, |c| c.is_whitespace(), &mut self.iter);
         Some(Token::Whitespace)
       }
-      c if c.is_alphanumeric() => Some(Token::Identifier(peeking_take_while(
+      c if c.is_alphanumeric() => Some(Token::Word(peeking_take_while(
         c,
         |c| c.is_alphanumeric() || *c == '_',
         &mut self.iter,
@@ -110,17 +126,14 @@ mod test {
   }
 
   #[test]
-  fn identifiers() {
+  fn words() {
     let s = "alpha 1234 alpha_1234".to_string();
     let mut lexer = Lexer::new(s.chars().peekable());
-    assert_eq!(lexer.next(), Some(Token::Identifier("alpha".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Word("alpha".to_string())));
     assert_eq!(lexer.next(), Some(Token::Whitespace));
-    assert_eq!(lexer.next(), Some(Token::Identifier("1234".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Word("1234".to_string())));
     assert_eq!(lexer.next(), Some(Token::Whitespace));
-    assert_eq!(
-      lexer.next(),
-      Some(Token::Identifier("alpha_1234".to_string()))
-    );
+    assert_eq!(lexer.next(), Some(Token::Word("alpha_1234".to_string())));
   }
 
   #[test]
@@ -134,7 +147,7 @@ mod test {
   fn unused_symbols() {
     let s = "+=-!@#$%^&*`~<>?'\"[]{}\\|*".to_string();
     let mut lexer = Lexer::new(s.chars().peekable());
-    for c in s.chars() {
+    for _ in s.chars() {
       assert_eq!(lexer.next(), None);
     }
   }

@@ -1,4 +1,4 @@
-use asm::operation::{Operation, Address, Condition, Reg};
+use asm::operation::{Address, Condition, Operation, Reg};
 use util::bits;
 
 fn opcode_reg(opcode: u8) -> Address {

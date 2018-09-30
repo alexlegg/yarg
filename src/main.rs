@@ -1,6 +1,7 @@
 mod asm;
 mod cartridge;
 mod cpu;
+mod decode;
 mod emulator;
 mod joypad;
 mod ppu;
