@@ -2,21 +2,31 @@ use lexer::Token;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 
-/* Grammar
+macro_rules! term {
+  ($x:expr) => {
+    Terminal($x)
+  };
+}
 
-Program -> Epsilon | Statement newline Program.
-Statement -> Label MaybeInstruction | Instruction | Directive.
-MaybeInstruction -> | Instruction .
-Directive -> dot section identifier.
-Label -> identifier colon.
-Operand -> Register | leftparens number rightparens | number.
-Opcode0 -> nop.
-Opcode1 -> dec.
-Opcode2 -> ld.
-Instruction -> Opcode0 | Opcode1 Operand | Opcode2 Operand comma Operand.
-Register -> "A" | "B" | "C" | "D" | "E" | "F" | "AF" | "BC" | "DE" | "HL" | "SP" | "PC"
+macro_rules! tkn {
+  ($x:expr) => {
+    Terminal(Token($x))
+  };
+}
 
-*/
+macro_rules! word {
+  ($x:expr) => {
+    Terminal(Token(Word($x.to_string())))
+  };
+}
+
+macro_rules! grammar {
+  ($($symbol:ident := $( [ $($p:expr) * ] ) *)*) => {{
+    ParseTableBuilder::new()
+      $($( .add_rule($symbol, vec!($( $p, )*)) )*)*
+      .build()
+  }}
+}
 
 #[derive(Debug, Clone)]
 pub struct Parser<I: Iterator<Item = Token>> {
@@ -76,54 +86,30 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     use lexer::Token::*;
     use ll1::Symbol::*;
     use ll1::Terminal::*;
-    self.table = ParseTableBuilder::new()
-      .add_rule(Program, vec![Terminal(Epsilon)])
-      .add_rule(Program, vec![Statement, Terminal(Token(Newline)), Program])
-      .add_rule(Statement, vec![Label, MaybeInstruction])
-      .add_rule(Statement, vec![Instruction])
-      .add_rule(Statement, vec![Directive])
-      .add_rule(MaybeInstruction, vec![Terminal(Epsilon)])
-      .add_rule(MaybeInstruction, vec![Instruction])
-      .add_rule(
-        Directive,
-        vec![
-          Terminal(Token(Dot)),
-          Terminal(Token(Word("section".to_string()))),
-        ],
-      )
-      .add_rule(Label, vec![Terminal(Alphanumeric), Terminal(Token(Colon))])
-      .add_rule(Operand, vec![Register])
-      .add_rule(
-        Operand,
-        vec![
-          Terminal(Token(LeftParens)),
-          Terminal(Number),
-          Terminal(Token(RightParens)),
-        ],
-      )
-      .add_rule(Operand, vec![Terminal(Number)])
-      .add_rule(Opcode0, vec![Terminal(Token(Word("nop".to_string())))])
-      .add_rule(Opcode1, vec![Terminal(Token(Word("dec".to_string())))])
-      .add_rule(Opcode2, vec![Terminal(Token(Word("ld".to_string())))])
-      .add_rule(Instruction, vec![Opcode0])
-      .add_rule(Instruction, vec![Opcode1, Operand])
-      .add_rule(
-        Instruction,
-        vec![Opcode2, Operand, Terminal(Token(Comma)), Operand],
-      )
-      .add_rule(Register, vec![Terminal(Token(Word("a".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("b".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("c".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("d".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("e".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("f".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("af".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("bc".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("de".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("hl".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("sp".to_string())))])
-      .add_rule(Register, vec![Terminal(Token(Word("pc".to_string())))])
-      .build()?;
+    self.table = grammar!(
+      Program           := [ term!(Epsilon) ]
+                           [ Statement tkn!(Newline) Program ]
+      Statement         := [ Label MaybeInstruction ]
+                           [ Instruction ]
+                           [ Directive ]
+      MaybeInstruction  := [ term!(Epsilon) ]
+                           [ Instruction ]
+      Directive         := [ tkn!(Dot) word!("bank") term!(Alphanumeric) ]
+      Label             := [ term!(Alphanumeric) tkn!(Colon) ]
+      Operand           := [ Register ]
+                           [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
+                           [ term!(Number) ]
+      Opcode0           := [ word!("nop") ]
+      Opcode1           := [ word!("dec") ]
+      Opcode2           := [ word!("ld") ]
+      Instruction       := [ Opcode0 ]
+                           [ Opcode1 Operand ]
+                           [ Opcode2 Operand tkn!(Comma) Operand ]
+      Register          := [ word!("a") ] [ word!("b") ] [ word!("c") ]
+                           [ word!("d") ] [ word!("e") ] [ word!("f") ]
+                           [ word!("af") ] [ word!("bc") ] [ word!("de") ]
+                           [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
+    )?;
     Ok(())
   }
 
@@ -163,7 +149,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Symbol::Terminal(Terminal::Alphanumeric) => {
           let t = token.ok_or(format!("Expected Alphanumeric, got end of input"))?;
           if t.is_alphanumeric_word() {
-            output.push(top.clone());
+            output.push(token_symbol.clone());
             token = self.token_iter.next();
             continue;
           } else {
@@ -407,6 +393,76 @@ mod test {
         Instruction,
         Opcode0,
         Terminal(Token(Word("nop".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn label() {
+    let tokens = vec![Word("label".to_string()), Colon, Newline];
+    let parser = Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Label,
+        Terminal(Token(Word("label".to_string()))),
+        Terminal(Token(Colon)),
+        MaybeInstruction,
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn label_and_instruction() {
+    let tokens = vec![
+      Word("label".to_string()),
+      Colon,
+      Word("nop".to_string()),
+      Newline,
+    ];
+    let parser = Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Label,
+        Terminal(Token(Word("label".to_string()))),
+        Terminal(Token(Colon)),
+        MaybeInstruction,
+        Instruction,
+        Opcode0,
+        Terminal(Token(Word("nop".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn directive() {
+    let tokens = vec![
+      Dot,
+      Word("bank".to_string()),
+      Word("0".to_string()),
+      Newline,
+    ];
+    let parser = Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Directive,
+        Terminal(Token(Dot)),
+        Terminal(Token(Word("bank".to_string()))),
+        Terminal(Token(Word("0".to_string()))),
         Terminal(Token(Newline)),
         Program,
       ])
