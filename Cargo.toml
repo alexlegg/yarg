@@ -13,6 +13,7 @@ path = "src/asm/main.rs"
 
 [dependencies]
 sdl2 = { version = "0.31.0", features = ["bundled"] }
+lazy_static = "1.1.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "libloaderapi", "memoryapi"] }

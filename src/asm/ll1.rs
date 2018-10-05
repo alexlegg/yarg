@@ -1,6 +1,7 @@
 use lexer::Token;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::iter::Peekable;
 
 macro_rules! term {
   ($x:expr) => {
@@ -28,65 +29,12 @@ macro_rules! grammar {
   }}
 }
 
-#[derive(Debug, Clone)]
-pub struct Parser<I: Iterator<Item = Token>> {
-  token_iter: I,
-  table: HashMap<Symbol, HashMap<Terminal, Vec<Symbol>>>,
-  output: VecDeque<Symbol>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Symbol {
-  Program,
-  Statement,
-  MaybeInstruction,
-  Directive,
-  Label,
-  Operand,
-  Opcode0,
-  Opcode1,
-  Opcode2,
-  Instruction,
-  Register,
-  Terminal(Terminal),
-}
-
-impl Symbol {
-  pub fn is_terminal(&self) -> bool {
-    match self {
-      Symbol::Terminal(_) => true,
-      _ => false,
-    }
-  }
-
-  pub fn is_nonterminal(&self) -> bool {
-    !self.is_terminal()
-  }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Terminal {
-  Token(Token),
-  Alphanumeric,
-  Number,
-  End,
-  Epsilon,
-}
-
-impl<I: Iterator<Item = Token>> Parser<I> {
-  pub fn new(token_iter: I) -> Parser<I> {
-    Parser {
-      token_iter,
-      table: HashMap::new(),
-      output: VecDeque::new(),
-    }
-  }
-
-  fn generate_table(&mut self) -> Result<(), String> {
+lazy_static! {
+  static ref PARSE_TABLE: HashMap<Symbol, HashMap<Terminal, Vec<Symbol>>> = {
     use lexer::Token::*;
     use ll1::Symbol::*;
     use ll1::Terminal::*;
-    self.table = grammar!(
+    grammar!(
       Program           := [ term!(Epsilon) ]
                            [ Statement tkn!(Newline) Program ]
       Statement         := [ Label MaybeInstruction ]
@@ -109,13 +57,52 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                            [ word!("d") ] [ word!("e") ] [ word!("f") ]
                            [ word!("af") ] [ word!("bc") ] [ word!("de") ]
                            [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
-    )?;
-    Ok(())
+    ).unwrap()
+  };
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Symbol {
+  Program,
+  Statement,
+  MaybeInstruction,
+  Directive,
+  Label,
+  Operand,
+  Opcode0,
+  Opcode1,
+  Opcode2,
+  Instruction,
+  Register,
+  Terminal(Terminal),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Terminal {
+  Token(Token),
+  Alphanumeric,
+  Number,
+  End,
+  Epsilon,
+}
+
+#[derive(Debug, Clone)]
+pub struct Parser<I: Iterator<Item = Token>> {
+  token_iter: Peekable<I>,
+  stack: Vec<Symbol>,
+}
+
+impl<I: Iterator<Item = Token>> Parser<I> {
+  pub fn new(token_iter: I) -> Parser<I> {
+    Parser {
+      token_iter: token_iter.peekable(),
+      stack: vec![Symbol::Program],
+    }
   }
 
-  fn table_lookup(&self, symbol: &Symbol, token: &Option<Token>) -> Option<&Vec<Symbol>> {
-    let row = self.table.get(&symbol)?;
-    match token {
+  fn table_lookup(&mut self, symbol: &Symbol) -> Option<Vec<Symbol>> {
+    let row = PARSE_TABLE.get(&symbol)?;
+    let entry = match self.token_iter.peek() {
       Some(w @ Token::Word(_)) => {
         // Try looking up the word as a keyword and fall back on Alphanumeric.
         row
@@ -124,56 +111,76 @@ impl<I: Iterator<Item = Token>> Parser<I> {
       }
       Some(t) => row.get(&Terminal::Token(t.clone())),
       None => row.get(&Terminal::End),
-    }
+    };
+    entry.map(|v| v.clone())
   }
 
-  pub fn parse(mut self) -> Result<Vec<Symbol>, String> {
-    self.generate_table()?;
-    let mut stack: Vec<Symbol> = vec![Symbol::Program];
-    let mut token = self.token_iter.next();
-    let mut output: Vec<Symbol> = Vec::new();
-    while !stack.is_empty() {
-      println!("stack: {:?}", stack);
-      let top = stack
-        .pop()
-        .ok_or("Unexpected empty parse stack".to_string())?
-        .clone();
-      let token_symbol =
-        Symbol::Terminal(token.clone().map_or(Terminal::End, |t| Terminal::Token(t)));
-      if top == token_symbol {
-        output.push(top.clone());
-        token = self.token_iter.next();
-        continue;
-      }
-      match &top {
-        Symbol::Terminal(Terminal::Alphanumeric) => {
-          let t = token.ok_or(format!("Expected Alphanumeric, got end of input"))?;
-          if t.is_alphanumeric_word() {
-            output.push(token_symbol.clone());
-            token = self.token_iter.next();
-            continue;
-          } else {
-            return Err(format!("Expected Alphanumeric, got {:?}", t));
-          }
-        }
-        Symbol::Terminal(t) => {
-          return Err(format!("Expected {:?}, got {:?}", t, token_symbol));
-        }
-        _ => {
-          output.push(top.clone());
+  pub fn parse(self) -> Result<Vec<Symbol>, String> {
+    let mut r = Vec::new();
+    for s in self {
+      r.push(s?);
+    }
+    Ok(r)
+  }
+}
+
+impl<I: Iterator<Item = Token>> Iterator for Parser<I> {
+  type Item = Result<Symbol, String>;
+
+  fn next(&mut self) -> Option<Result<Symbol, String>> {
+    match self.stack.pop()? {
+      Symbol::Terminal(Terminal::Alphanumeric) => {
+        if self
+          .token_iter
+          .peek()
+          .map_or(false, |t| t.is_alphanumeric_word())
+        {
+          return Some(Ok(Symbol::Terminal(Terminal::Token(
+            self.token_iter.next().unwrap(),
+          ))));
+        } else {
+          return Some(Err(format!(
+            "Expected Alphanumeric, got {:?}",
+            self.token_iter.peek()
+          )));
         }
       }
-      let symbols = self
-        .table_lookup(&top, &token)
-        .ok_or(format!("Failed on table lookup: {:?} {:?}", top, token))?;
-      for s in symbols.iter().rev() {
-        if let Symbol::Terminal(Terminal::Epsilon) = s {
-          continue;
+      Symbol::Terminal(Terminal::Token(token)) => {
+        if self.token_iter.peek().map_or(false, |t| *t == token) {
+          self.token_iter.next();
+          return Some(Ok(Symbol::Terminal(Terminal::Token(token))));
+        } else {
+          return Some(Err(format!(
+            "Expected {:?}, got {:?}",
+            token,
+            self.token_iter.peek()
+          )));
         }
-        stack.push(s.clone());
+      }
+      Symbol::Terminal(Terminal::End) => {
+        if self.token_iter.peek().is_none() {
+          return None;
+        } else {
+          return Some(Err(format!(
+            "Expected end of input, got {:?}",
+            self.token_iter.peek()
+          )));
+        }
+      }
+      top @ _ => {
+        let symbols = self.table_lookup(&top);
+        if symbols.is_none() {
+          return Some(Err(format!("Failed on table lookup: {:?}", top)));
+        }
+        self
+          .stack
+          .extend(symbols.unwrap().into_iter().rev().filter(|s| match s {
+            Symbol::Terminal(Terminal::Epsilon) => false,
+            _ => true,
+          }));
+        return Some(Ok(top));
       }
     }
-    Ok(output)
   }
 }
 
@@ -291,6 +298,19 @@ where
     inserted |= target.insert(s);
   }
   return inserted;
+}
+
+impl Symbol {
+  pub fn is_terminal(&self) -> bool {
+    match self {
+      Symbol::Terminal(_) => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_nonterminal(&self) -> bool {
+    !self.is_terminal()
+  }
 }
 
 #[cfg(test)]

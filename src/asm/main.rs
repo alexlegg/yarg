@@ -3,6 +3,9 @@ mod ll1;
 mod operation;
 mod parser;
 
+#[macro_use]
+extern crate lazy_static;
+
 use lexer::Lexer;
 use std::env;
 use std::fs;
