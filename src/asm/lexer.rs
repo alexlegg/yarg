@@ -3,7 +3,6 @@ use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
-  Whitespace,
   Newline,
   LeftParens,
   RightParens,
@@ -86,7 +85,7 @@ impl<'a> Iterator for Lexer<'a> {
       }
       c if c.is_whitespace() => {
         peeking_take_while(c, |c| c.is_whitespace(), &mut self.iter);
-        Some(Token::Whitespace)
+        self.next()
       }
       c if c.is_alphanumeric() => Some(Token::Word(peeking_take_while(
         c,
@@ -121,7 +120,6 @@ mod test {
   fn whitespace() {
     let s = "    \t\t  .".to_string();
     let mut lexer = Lexer::new(s.chars().peekable());
-    assert_eq!(lexer.next(), Some(Token::Whitespace));
     assert_eq!(lexer.next(), Some(Token::Dot));
   }
 
@@ -130,9 +128,7 @@ mod test {
     let s = "alpha 1234 alpha_1234".to_string();
     let mut lexer = Lexer::new(s.chars().peekable());
     assert_eq!(lexer.next(), Some(Token::Word("alpha".to_string())));
-    assert_eq!(lexer.next(), Some(Token::Whitespace));
     assert_eq!(lexer.next(), Some(Token::Word("1234".to_string())));
-    assert_eq!(lexer.next(), Some(Token::Whitespace));
     assert_eq!(lexer.next(), Some(Token::Word("alpha_1234".to_string())));
   }
 

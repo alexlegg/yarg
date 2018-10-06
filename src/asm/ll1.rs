@@ -87,14 +87,14 @@ pub enum Terminal {
 }
 
 #[derive(Debug, Clone)]
-pub struct Parser<I: Iterator<Item = Token>> {
+pub struct Ll1Parser<I: Iterator<Item = Token>> {
   token_iter: Peekable<I>,
   stack: Vec<Symbol>,
 }
 
-impl<I: Iterator<Item = Token>> Parser<I> {
-  pub fn new(token_iter: I) -> Parser<I> {
-    Parser {
+impl<I: Iterator<Item = Token>> Ll1Parser<I> {
+  pub fn new(token_iter: I) -> Ll1Parser<I> {
+    Ll1Parser {
       token_iter: token_iter.peekable(),
       stack: vec![Symbol::Program],
     }
@@ -124,7 +124,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
   }
 }
 
-impl<I: Iterator<Item = Token>> Iterator for Parser<I> {
+impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
   type Item = Result<Symbol, String>;
 
   fn next(&mut self) -> Option<Result<Symbol, String>> {
@@ -323,7 +323,7 @@ mod test {
   #[test]
   fn opcode0() {
     let tokens = vec![Word("nop".to_string()), Newline];
-    let parser = Parser::new(tokens.into_iter());
+    let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
       parser.parse(),
       Ok(vec![
@@ -341,7 +341,7 @@ mod test {
   #[test]
   fn opcode1() {
     let tokens = vec![Word("dec".to_string()), Word("a".to_string()), Newline];
-    let parser = Parser::new(tokens.into_iter());
+    let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
       parser.parse(),
       Ok(vec![
@@ -368,7 +368,7 @@ mod test {
       Word("b".to_string()),
       Newline,
     ];
-    let parser = Parser::new(tokens.into_iter());
+    let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
       parser.parse(),
       Ok(vec![
@@ -398,7 +398,7 @@ mod test {
       Word("nop".to_string()),
       Newline,
     ];
-    let parser = Parser::new(tokens.into_iter());
+    let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
       parser.parse(),
       Ok(vec![
@@ -422,7 +422,7 @@ mod test {
   #[test]
   fn label() {
     let tokens = vec![Word("label".to_string()), Colon, Newline];
-    let parser = Parser::new(tokens.into_iter());
+    let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
       parser.parse(),
       Ok(vec![
@@ -446,7 +446,7 @@ mod test {
       Word("nop".to_string()),
       Newline,
     ];
-    let parser = Parser::new(tokens.into_iter());
+    let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
       parser.parse(),
       Ok(vec![
@@ -473,7 +473,7 @@ mod test {
       Word("0".to_string()),
       Newline,
     ];
-    let parser = Parser::new(tokens.into_iter());
+    let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
       parser.parse(),
       Ok(vec![
