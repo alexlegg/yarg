@@ -9,9 +9,6 @@ pub enum Token {
   Comma,
   Dot,
   Colon,
-  LineCommentStart,
-  CommentStart,
-  CommentEnd,
   Word(String),
 }
 
@@ -70,18 +67,26 @@ impl<'a> Iterator for Lexer<'a> {
       ',' => Some(Token::Comma),
       '.' => Some(Token::Dot),
       ':' => Some(Token::Colon),
-      ';' => Some(Token::LineCommentStart),
       '/' => match self.iter.next()? {
-        '/' => Some(Token::LineCommentStart),
-        '*' => Some(Token::CommentStart),
+        c @ '/' => {
+          peeking_take_while(c, |c| *c != '\n', &mut self.iter);
+          self.next()
+        }
+        c @ '*' => {
+          loop {
+            peeking_take_while(c, |c| *c != '*', &mut self.iter);
+            self.iter.next();
+            if self.iter.next()? == '/' {
+              break;
+            }
+          }
+          self.next()
+        }
         _ => None,
       },
-      '*' => {
-        if self.iter.next()? == '/' {
-          Some(Token::CommentEnd)
-        } else {
-          None
-        }
+      c @ ';' => {
+        peeking_take_while(c, |c| *c != '\n', &mut self.iter);
+        self.next()
       }
       c if c.is_whitespace() => {
         peeking_take_while(c, |c| c.is_whitespace(), &mut self.iter);
@@ -102,7 +107,7 @@ mod test {
   use super::*;
   #[test]
   fn symbols() {
-    let s = "(),:\n.;/**///".to_string();
+    let s = "(),:\n.".to_string();
     let mut lexer = Lexer::new(s.chars().peekable());
     assert_eq!(lexer.next(), Some(Token::LeftParens));
     assert_eq!(lexer.next(), Some(Token::RightParens));
@@ -110,10 +115,32 @@ mod test {
     assert_eq!(lexer.next(), Some(Token::Colon));
     assert_eq!(lexer.next(), Some(Token::Newline));
     assert_eq!(lexer.next(), Some(Token::Dot));
-    assert_eq!(lexer.next(), Some(Token::LineCommentStart));
-    assert_eq!(lexer.next(), Some(Token::CommentStart));
-    assert_eq!(lexer.next(), Some(Token::CommentEnd));
-    assert_eq!(lexer.next(), Some(Token::LineCommentStart));
+    assert_eq!(lexer.next(), None);
+  }
+
+  #[test]
+  fn semicolon_line_comment() {
+    let s = ";comment\n".to_string();
+    let mut lexer = Lexer::new(s.chars().peekable());
+    assert_eq!(lexer.next(), Some(Token::Newline));
+    assert_eq!(lexer.next(), None);
+  }
+
+  #[test]
+  fn slashes_line_comment() {
+    let s = "//comment\n".to_string();
+    let mut lexer = Lexer::new(s.chars().peekable());
+    assert_eq!(lexer.next(), Some(Token::Newline));
+    assert_eq!(lexer.next(), None);
+  }
+
+  #[test]
+  fn multiline_comment() {
+    let s = "./*\ncomment\n*/.".to_string();
+    let mut lexer = Lexer::new(s.chars().peekable());
+    assert_eq!(lexer.next(), Some(Token::Dot));
+    assert_eq!(lexer.next(), Some(Token::Dot));
+    assert_eq!(lexer.next(), None);
   }
 
   #[test]
@@ -121,6 +148,7 @@ mod test {
     let s = "    \t\t  .".to_string();
     let mut lexer = Lexer::new(s.chars().peekable());
     assert_eq!(lexer.next(), Some(Token::Dot));
+    assert_eq!(lexer.next(), None);
   }
 
   #[test]
@@ -130,6 +158,7 @@ mod test {
     assert_eq!(lexer.next(), Some(Token::Word("alpha".to_string())));
     assert_eq!(lexer.next(), Some(Token::Word("1234".to_string())));
     assert_eq!(lexer.next(), Some(Token::Word("alpha_1234".to_string())));
+    assert_eq!(lexer.next(), None);
   }
 
   #[test]

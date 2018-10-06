@@ -261,9 +261,23 @@ mod test {
       ])
     );
   }
+
   #[test]
   fn statements_with_line_comment() {
     let input = "nop; this is a comment\nld a, b\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Instruction(Nop),
+        Instruction(Load8(Register(Reg::A), Register(Reg::B))),
+      ])
+    );
+  }
+
+  #[test]
+  fn statements_with_multiline_comment() {
+    let input = "nop /* this\nis\na\ncomment\n*/\nld a, b\n".to_string();
     let parser = Parser::new(input.chars());
     assert_eq!(
       parser.parse(),
