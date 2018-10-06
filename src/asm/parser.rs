@@ -6,7 +6,7 @@ use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-  Directive(String),
+  Directive(String, String),
   Label(String),
   Instruction(Operation),
 }
@@ -93,6 +93,9 @@ impl<'a> Parser<'a> {
         self.expect(Symbol::MaybeInstruction)?;
         Ok(Statement::Label(label))
       }
+      Symbol::Directive => self
+        .match_directive()
+        .map(|(d, v)| Statement::Directive(d, v)),
       s @ _ => Err(format!("Unexpected symbol {:?}", s)),
     }
   }
@@ -110,6 +113,13 @@ impl<'a> Parser<'a> {
     let name = self.next_word()?;
     self.expect_token(Token::Colon)?;
     Ok(name)
+  }
+
+  fn match_directive(&mut self) -> Result<(String, String), String> {
+    self.expect_token(Token::Dot)?;
+    let name = self.next_word()?;
+    let value = self.next_word()?;
+    Ok((name, value))
   }
 
   fn match_opcode0(&mut self) -> Result<Operation, String> {
@@ -212,6 +222,16 @@ mod test {
   }
 
   #[test]
+  fn directive() {
+    let input = ".bank 0\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![Directive("bank".to_string(), "0".to_string())])
+    );
+  }
+
+  #[test]
   fn label() {
     let input = "label:\n".to_string();
     let parser = Parser::new(input.chars());
@@ -225,6 +245,32 @@ mod test {
     assert_eq!(
       parser.parse(),
       Ok(vec![Label("label".to_string()), Instruction(Nop)])
+    );
+  }
+
+  #[test]
+  fn multiple_statements() {
+    let input = "label:\nnop\nld a, b\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Label("label".to_string()),
+        Instruction(Nop),
+        Instruction(Load8(Register(Reg::A), Register(Reg::B))),
+      ])
+    );
+  }
+  #[test]
+  fn statements_with_line_comment() {
+    let input = "nop; this is a comment\nld a, b\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Instruction(Nop),
+        Instruction(Load8(Register(Reg::A), Register(Reg::B))),
+      ])
     );
   }
 }
