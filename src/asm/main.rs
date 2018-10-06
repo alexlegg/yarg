@@ -6,7 +6,6 @@ mod parser;
 #[macro_use]
 extern crate lazy_static;
 
-use lexer::Lexer;
 use parser::Parser;
 use std::env;
 use std::fs;

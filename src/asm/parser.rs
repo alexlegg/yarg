@@ -8,7 +8,6 @@ use std::str::Chars;
 pub enum Statement {
   Directive(String),
   Label(String),
-  LabelAndInstruction(String, Operation),
   Instruction(Operation),
 }
 
@@ -60,14 +59,30 @@ impl<'a> Parser<'a> {
   }
 
   fn match_program(&mut self) -> Option<Result<Statement, String>> {
-    self.ll1.next().map(|n| match n? {
-      Symbol::Statement => {
+    // We may be in two states here: at the beginning of a Program, or at the
+    // beginning of an Instruction following MaybeInstruction.
+    match self.ll1.next()? {
+      Ok(Symbol::Program) => self.match_program(),
+      Ok(Symbol::Statement) => {
         let statement = self.match_statement();
-        self.expect_token(Token::Newline)?;
-        statement
+        if let Some(Ok(Symbol::Instruction)) = self.ll1.peek() {
+          return Some(statement);
+        }
+        if let Err(e) = self.expect_token(Token::Newline) {
+          return Some(Err(e));
+        }
+        Some(statement)
       }
-      s @ _ => Err(format!("Unexpected symbol {:?}", s)),
-    })
+      Ok(Symbol::Instruction) => {
+        let statement = self.match_instruction().map(|i| Statement::Instruction(i));
+        if let Err(e) = self.expect_token(Token::Newline) {
+          return Some(Err(e));
+        }
+        Some(statement)
+      }
+      s @ Ok(_) => Some(Err(format!("Unexpected symbol {:?}", s))),
+      Err(e) => Some(Err(e)),
+    }
   }
 
   fn match_statement(&mut self) -> Result<Statement, String> {
@@ -76,13 +91,7 @@ impl<'a> Parser<'a> {
       Symbol::Label => {
         let label = self.match_label()?;
         self.expect(Symbol::MaybeInstruction)?;
-        if let Some(Ok(Symbol::Instruction)) = self.ll1.peek() {
-          self.ll1.next();
-          let inst = self.match_instruction()?;
-          Ok(Statement::LabelAndInstruction(label, inst))
-        } else {
-          Ok(Statement::Label(label))
-        }
+        Ok(Statement::Label(label))
       }
       s @ _ => Err(format!("Unexpected symbol {:?}", s)),
     }
@@ -164,11 +173,7 @@ impl<'a> Iterator for Parser<'a> {
   type Item = Result<Statement, String>;
 
   fn next(&mut self) -> Option<Result<Statement, String>> {
-    match self.ll1.next() {
-      Some(Ok(Symbol::Program)) => self.match_program(),
-      Some(Err(e)) => Some(Err(e)),
-      s => Some(Err(format!("Unexpected symbol {:?}", s))),
-    }
+    self.match_program()
   }
 }
 
@@ -219,7 +224,7 @@ mod test {
     let parser = Parser::new(input.chars());
     assert_eq!(
       parser.parse(),
-      Ok(vec![LabelAndInstruction("label".to_string(), Nop)])
+      Ok(vec![Label("label".to_string()), Instruction(Nop)])
     );
   }
 }
