@@ -1,3 +1,5 @@
+mod assembler;
+mod cartridge;
 mod lexer;
 mod ll1;
 mod operation;
@@ -9,17 +11,21 @@ extern crate lazy_static;
 use parser::Parser;
 use std::env;
 use std::fs;
+use std::io::Write;
+use std::path::Path;
 
-fn main() {
+fn main() -> Result<(), String> {
   let args: Vec<String> = env::args().collect();
   if args.len() != 2 {
     println!("Must specify input file")
   }
-  if let Some(filename) = args.last() {
-    if let Ok(input) = fs::read_to_string(filename) {
-      let parser = Parser::new(input.chars());
-      println!("{:?}", parser.parse());
-    }
-  }
-  println!("Failed to parse");
+  let path = Path::new(args.last().unwrap());
+  let input = fs::read_to_string(path)
+    .map_err(|e| format!("Error reading {}: {}", path.to_str().unwrap(), e))?;
+  let parser = Parser::new(input.chars());
+  let code = assembler::assemble(parser.parse()?)?;
+  let mut file = fs::File::create(path.with_extension("gb"))
+    .map_err(|e| format!("Error opening file for write: {}", e))?;
+  file.write_all(&code).unwrap();
+  Ok(())
 }
