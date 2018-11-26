@@ -61,7 +61,10 @@ impl<'a> Iterator for Lexer<'a> {
 
   fn next(&mut self) -> Option<Token> {
     match self.iter.next()? {
-      '\n' => Some(Token::Newline),
+      c @ '\n' | c @ '\r' => {
+        peeking_take_while(c, |c| *c == '\n' || *c == '\r', &mut self.iter);
+        Some(Token::Newline)
+      }
       '(' => Some(Token::LeftParens),
       ')' => Some(Token::RightParens),
       ',' => Some(Token::Comma),
