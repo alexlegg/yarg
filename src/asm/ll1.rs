@@ -46,7 +46,7 @@ lazy_static! {
       Label             := [ term!(Alphanumeric) tkn!(Colon) ]
       Operand           := [ Register ]
                            [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
-                           [ term!(Number) ]
+                           [ Constant ]
       Opcode0           := [ word!("nop") ]
       Opcode1           := [ word!("dec") ]
       Opcode2           := [ word!("ld") ]
@@ -57,6 +57,7 @@ lazy_static! {
                            [ word!("d") ] [ word!("e") ] [ word!("f") ]
                            [ word!("af") ] [ word!("bc") ] [ word!("de") ]
                            [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
+      Constant          := [ term!(Number) ]
     ).unwrap()
   };
 }
@@ -74,6 +75,7 @@ pub enum Symbol {
   Opcode2,
   Instruction,
   Register,
+  Constant,
   Terminal(Terminal),
 }
 
@@ -104,10 +106,14 @@ impl<I: Iterator<Item = Token>> Ll1Parser<I> {
     let row = PARSE_TABLE.get(&symbol)?;
     let entry = match self.token_iter.peek() {
       Some(w @ Token::Word(_)) => {
-        // Try looking up the word as a keyword and fall back on Alphanumeric.
+        // Try looking up the word as a keyword and fall back on Alphanumeric/Number.
         row
           .get(&Terminal::Token(w.clone()))
-          .or(row.get(&Terminal::Alphanumeric))
+          .or(if w.is_numeric_word() {
+            row.get(&Terminal::Number)
+          } else {
+            row.get(&Terminal::Alphanumeric)
+          })
       }
       Some(t) => row.get(&Terminal::Token(t.clone())),
       None => row.get(&Terminal::End),
@@ -141,6 +147,22 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
         } else {
           return Some(Err(format!(
             "Expected Alphanumeric, got {:?}",
+            self.token_iter.peek()
+          )));
+        }
+      }
+      Symbol::Terminal(Terminal::Number) => {
+        if self
+          .token_iter
+          .peek()
+          .map_or(false, |t| t.is_numeric_word())
+        {
+          return Some(Ok(Symbol::Terminal(Terminal::Token(
+            self.token_iter.next().unwrap(),
+          ))));
+        } else {
+          return Some(Err(format!(
+            "Expected Numeric, got {:?}",
             self.token_iter.peek()
           )));
         }
@@ -384,6 +406,37 @@ mod test {
         Operand,
         Register,
         Terminal(Token(Word("b".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn constant() {
+    let tokens = vec![
+      Word("ld".to_string()),
+      Word("a".to_string()),
+      Comma,
+      Word("10".to_string()),
+      Newline,
+    ];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Opcode2,
+        Terminal(Token(Word("ld".to_string()))),
+        Operand,
+        Register,
+        Terminal(Token(Word("a".to_string()))),
+        Terminal(Token(Comma)),
+        Operand,
+        Constant,
+        Terminal(Token(Word("10".to_string()))),
         Terminal(Token(Newline)),
         Program,
       ])

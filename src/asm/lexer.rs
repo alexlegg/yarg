@@ -22,7 +22,7 @@ impl Token {
 
   pub fn is_numeric_word(&self) -> bool {
     match self {
-      Token::Word(_) => true,
+      Token::Word(s) => s.chars().all(char::is_numeric),
       _ => false,
     }
   }
@@ -178,5 +178,22 @@ mod test {
     for _ in s.chars() {
       assert_eq!(lexer.next(), None);
     }
+  }
+
+  #[test]
+  fn instructions() {
+    let s = "ld a, 10\ndec a\nnop\n".to_string();
+    let mut lexer = Lexer::new(s.chars().peekable());
+    assert_eq!(lexer.next(), Some(Token::Word("ld".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Word("a".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Comma));
+    assert_eq!(lexer.next(), Some(Token::Word("10".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Newline));
+    assert_eq!(lexer.next(), Some(Token::Word("dec".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Word("a".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Newline));
+    assert_eq!(lexer.next(), Some(Token::Word("nop".to_string())));
+    assert_eq!(lexer.next(), Some(Token::Newline));
+    assert_eq!(lexer.next(), None);
   }
 }

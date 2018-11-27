@@ -155,6 +155,7 @@ impl<'a> Parser<'a> {
   fn match_operand(&mut self) -> Result<Address, String> {
     match self.next_symbol()? {
       Symbol::Register => self.match_register().map(|r| Address::Register(r)),
+      Symbol::Constant => self.match_constant().map(|c| Address::Data8(c)),
       s @ _ => Err(format!("Unexpected symbol in operand: {:?}", s)),
     }
   }
@@ -176,6 +177,13 @@ impl<'a> Parser<'a> {
       "pc" => Ok(Reg::PC),
       s @ _ => Err(format!("Unexpected symbol: {:?}", s)),
     }
+  }
+
+  fn match_constant(&mut self) -> Result<u8, String> {
+    self
+      .next_word()?
+      .parse::<u8>()
+      .map_err(|e| format!("Failed to parse number: {:?}", e))
   }
 }
 
@@ -218,6 +226,16 @@ mod test {
     assert_eq!(
       parser.parse(),
       Ok(vec![Instruction(Load8(Register(Reg::A), Register(Reg::B)))])
+    );
+  }
+
+  #[test]
+  fn constant() {
+    let input = "ld a, 10\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![Instruction(Load8(Register(Reg::A), Data8(10)))])
     );
   }
 
