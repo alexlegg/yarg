@@ -1,6 +1,6 @@
 use lexer::{Lexer, Token};
 use ll1::{Ll1Parser, Symbol, Terminal};
-use operation::{Address, Operation, Reg};
+use operation::{Address, Condition, Operation, Reg};
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -41,7 +41,7 @@ impl<'a> Parser<'a> {
   fn next_word(&mut self) -> Result<String, String> {
     match self.next_symbol()? {
       Symbol::Terminal(Terminal::Token(Token::Word(word))) => Ok(word),
-      s @ _ => Err(format!("Unexpected symbol: {:?}", s)),
+      s @ _ => Err(format!("Expected word, got symbol: {:?}", s)),
     }
   }
 
@@ -50,7 +50,7 @@ impl<'a> Parser<'a> {
     if next == symbol {
       Ok(())
     } else {
-      Err(format!("Unexpected symbol {:?}", next))
+      Err(format!("Expected {:?}, got symbol {:?}", symbol, next))
     }
   }
 
@@ -80,7 +80,10 @@ impl<'a> Parser<'a> {
         }
         Some(statement)
       }
-      s @ Ok(_) => Some(Err(format!("Unexpected symbol {:?}", s))),
+      s @ Ok(_) => Some(Err(format!(
+        "Expected Program, Statement, or Instruction. Got {:?}",
+        s
+      ))),
       Err(e) => Some(Err(e)),
     }
   }
@@ -96,7 +99,10 @@ impl<'a> Parser<'a> {
       Symbol::Directive => self
         .match_directive()
         .map(|(d, v)| Statement::Directive(d, v)),
-      s @ _ => Err(format!("Unexpected symbol {:?}", s)),
+      s @ _ => Err(format!(
+        "Expected Instruction, Label, or Directive. Got {:?}",
+        s
+      )),
     }
   }
 
@@ -105,7 +111,7 @@ impl<'a> Parser<'a> {
       Symbol::Opcode0 => self.match_opcode0(),
       Symbol::Opcode1 => self.match_opcode1(),
       Symbol::Opcode2 => self.match_opcode2(),
-      s @ _ => Err(format!("Unexpected symbol: {:?}", s)),
+      s @ _ => Err(format!("Expected Opcode, got {:?}", s)),
     }
   }
 
@@ -125,7 +131,21 @@ impl<'a> Parser<'a> {
   fn match_opcode0(&mut self) -> Result<Operation, String> {
     match self.next_word()?.as_ref() {
       "nop" => Ok(Operation::Nop),
-      s @ _ => Err(format!("Unexpected symbol: {:?}", s)),
+      "daa" => Ok(Operation::DecimalAdjustAccumulator),
+      "cpl" => Ok(Operation::Complement),
+      "ccf" => Ok(Operation::ComplementCarry),
+      "scf" => Ok(Operation::SetCarry),
+      "halt" => Ok(Operation::Halt),
+      "stop" => Ok(Operation::Stop),
+      "ei" => Ok(Operation::EnableInterrupts),
+      "di" => Ok(Operation::DisableInterrupts),
+      "rlca" => Ok(Operation::RotateLeftA(true, Address::Register(Reg::A))),
+      "rla" => Ok(Operation::RotateLeftA(false, Address::Register(Reg::A))),
+      "rrca" => Ok(Operation::RotateRightA(true, Address::Register(Reg::A))),
+      "rra" => Ok(Operation::RotateRightA(false, Address::Register(Reg::A))),
+      "ret" => Ok(Operation::Return(Condition::Unconditional)),
+      "reti" => Ok(Operation::ReturnFromInterrupt),
+      s @ _ => Err(format!("Expected opcode0, got {:?}", s)),
     }
   }
 
@@ -135,7 +155,7 @@ impl<'a> Parser<'a> {
     let operand = self.match_operand()?;
     match opcode.as_ref() {
       "dec" => Ok(Operation::Decrement(operand)),
-      s @ _ => Err(format!("Unexpected symbol: {:?}", s)),
+      s @ _ => Err(format!("Expected opcode1, got {:?}", s)),
     }
   }
 
@@ -148,7 +168,7 @@ impl<'a> Parser<'a> {
     let operand2 = self.match_operand()?;
     match opcode.as_ref() {
       "ld" => Ok(Operation::Load8(operand1, operand2)),
-      s @ _ => Err(format!("Unexpected symbol: {:?}", s)),
+      s @ _ => Err(format!("Expected opcode2, got {:?}", s)),
     }
   }
 
@@ -156,7 +176,7 @@ impl<'a> Parser<'a> {
     match self.next_symbol()? {
       Symbol::Register => self.match_register().map(|r| Address::Register(r)),
       Symbol::Constant => self.match_constant().map(|c| Address::Data8(c)),
-      s @ _ => Err(format!("Unexpected symbol in operand: {:?}", s)),
+      s @ _ => Err(format!("Expected Register, or Constant. Got {:?}", s)),
     }
   }
 
@@ -175,7 +195,7 @@ impl<'a> Parser<'a> {
       "hl" => Ok(Reg::HL),
       "sp" => Ok(Reg::SP),
       "pc" => Ok(Reg::PC),
-      s @ _ => Err(format!("Unexpected symbol: {:?}", s)),
+      s @ _ => Err(format!("Expected register, got {:?}", s)),
     }
   }
 

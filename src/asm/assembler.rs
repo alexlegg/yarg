@@ -61,6 +61,42 @@ impl Assembler {
       Operation::Halt => {
         self.insert(0x76);
       }
+      Operation::DisableInterrupts => {
+        self.insert(0xf3);
+      }
+      Operation::EnableInterrupts => {
+        self.insert(0xfb);
+      }
+      Operation::DecimalAdjustAccumulator => {
+        self.insert(0x27);
+      }
+      Operation::Complement => {
+        self.insert(0x2f);
+      }
+      Operation::ComplementCarry => {
+        self.insert(0x3f);
+      }
+      Operation::SetCarry => {
+        self.insert(0x37);
+      }
+      Operation::RotateLeftA(true, _) => {
+        self.insert(0x07);
+      }
+      Operation::RotateLeftA(false, _) => {
+        self.insert(0x17);
+      }
+      Operation::RotateRightA(true, _) => {
+        self.insert(0x0f);
+      }
+      Operation::RotateRightA(false, _) => {
+        self.insert(0x1f);
+      }
+      Operation::Return(Condition::Unconditional) => {
+        self.insert(0xc9);
+      }
+      Operation::ReturnFromInterrupt => {
+        self.insert(0xd9);
+      }
       Operation::Load8(Address::Register(r), Address::Data8(val)) => {
         self.insert(0x06 | (encode_reg(r) << 3));
         self.insert(val);

@@ -191,7 +191,7 @@ where
       let source = Address::Indirect(Reg::HL);
       Ok((1, Operation::LoadDecrement(destination, source)))
     }
-    // SCF
+    // CCF
     0x3f => Ok((1, Operation::ComplementCarry)),
     // LD <reg>, <reg>
     0x40...0x75 | 0x77...0x7f => {
