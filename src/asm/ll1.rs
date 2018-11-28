@@ -44,10 +44,7 @@ lazy_static! {
                            [ Instruction ]
       Directive         := [ tkn!(Dot) word!("bank") term!(Alphanumeric) ]
       Label             := [ term!(Alphanumeric) tkn!(Colon) ]
-      Operand           := [ Register ]
-                           [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
-                           [ Constant ]
-      Opcode0           := [ word!("nop") ]
+      Opcode            := [ word!("nop") ]
                            [ word!("daa") ]
                            [ word!("cpl") ]
                            [ word!("ccf") ]
@@ -60,13 +57,26 @@ lazy_static! {
                            [ word!("rla") ]
                            [ word!("rrca") ]
                            [ word!("rra") ]
-                           [ word!("ret") ]
                            [ word!("reti") ]
-      Opcode1           := [ word!("dec") ]
-      Opcode2           := [ word!("ld") ]
-      Instruction       := [ Opcode0 ]
-                           [ Opcode1 Operand ]
-                           [ Opcode2 Operand tkn!(Comma) Operand ]
+                           [ word!("inc") ]
+                           [ word!("dec") ]
+                           [ word!("sub") ]
+                           [ word!("and") ]
+                           [ word!("xor") ]
+                           [ word!("or") ]
+                           [ word!("cp") ]
+                           [ word!("push") ]
+                           [ word!("pop") ]
+                           [ word!("ret") ]
+                           [ word!("ld") ]
+      Operand           := [ Register ]
+                           [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
+                           [ Constant ]
+      MaybeOperands     := [ term!(Epsilon) ]
+                           [ Operand MaybeOperand ]
+      MaybeOperand      := [ term!(Epsilon) ]
+                           [ tkn!(Comma) Operand ]
+      Instruction       := [ Opcode MaybeOperands ]
       Register          := [ word!("a") ] [ word!("b") ] [ word!("c") ]
                            [ word!("d") ] [ word!("e") ] [ word!("f") ]
                            [ word!("af") ] [ word!("bc") ] [ word!("de") ]
@@ -83,10 +93,10 @@ pub enum Symbol {
   MaybeInstruction,
   Directive,
   Label,
+  Opcode,
   Operand,
-  Opcode0,
-  Opcode1,
-  Opcode2,
+  MaybeOperands,
+  MaybeOperand,
   Instruction,
   Register,
   Constant,
@@ -357,7 +367,7 @@ mod test {
   use ll1::Terminal::*;
 
   #[test]
-  fn opcode0() {
+  fn zero_operands() {
     let tokens = vec![Word("nop".to_string()), Newline];
     let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
@@ -366,8 +376,9 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode0,
+        Opcode,
         Terminal(Token(Word("nop".to_string()))),
+        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
       ])
@@ -375,7 +386,7 @@ mod test {
   }
 
   #[test]
-  fn opcode1() {
+  fn one_operand() {
     let tokens = vec![Word("dec".to_string()), Word("a".to_string()), Newline];
     let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
@@ -384,11 +395,13 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode1,
+        Opcode,
         Terminal(Token(Word("dec".to_string()))),
+        MaybeOperands,
         Operand,
         Register,
         Terminal(Token(Word("a".to_string()))),
+        MaybeOperand,
         Terminal(Token(Newline)),
         Program,
       ])
@@ -396,7 +409,7 @@ mod test {
   }
 
   #[test]
-  fn opcode2() {
+  fn two_operands() {
     let tokens = vec![
       Word("ld".to_string()),
       Word("a".to_string()),
@@ -411,11 +424,13 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode2,
+        Opcode,
         Terminal(Token(Word("ld".to_string()))),
+        MaybeOperands,
         Operand,
         Register,
         Terminal(Token(Word("a".to_string()))),
+        MaybeOperand,
         Terminal(Token(Comma)),
         Operand,
         Register,
@@ -442,11 +457,13 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode2,
+        Opcode,
         Terminal(Token(Word("ld".to_string()))),
+        MaybeOperands,
         Operand,
         Register,
         Terminal(Token(Word("a".to_string()))),
+        MaybeOperand,
         Terminal(Token(Comma)),
         Operand,
         Constant,
@@ -472,14 +489,16 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode0,
+        Opcode,
         Terminal(Token(Word("nop".to_string()))),
+        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
         Statement,
         Instruction,
-        Opcode0,
+        Opcode,
         Terminal(Token(Word("nop".to_string()))),
+        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
       ])
@@ -524,8 +543,9 @@ mod test {
         Terminal(Token(Colon)),
         MaybeInstruction,
         Instruction,
-        Opcode0,
+        Opcode,
         Terminal(Token(Word("nop".to_string()))),
+        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
       ])

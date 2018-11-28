@@ -54,8 +54,23 @@ impl<'a> Parser<'a> {
     }
   }
 
+  fn maybe_expect(&mut self, symbol: Symbol) -> Result<bool, String> {
+    let peek_matches = match self.ll1.peek() {
+      Some(Ok(next)) => *next == symbol,
+      _ => false,
+    };
+    if peek_matches {
+      self.expect(symbol)?;
+    }
+    Ok(peek_matches)
+  }
+
   fn expect_token(&mut self, token: Token) -> Result<(), String> {
     self.expect(Symbol::Terminal(Terminal::Token(token)))
+  }
+
+  fn maybe_expect_token(&mut self, token: Token) -> Result<bool, String> {
+    self.maybe_expect(Symbol::Terminal(Terminal::Token(token)))
   }
 
   fn match_program(&mut self) -> Option<Result<Statement, String>> {
@@ -106,15 +121,6 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn match_instruction(&mut self) -> Result<Operation, String> {
-    match self.next_symbol()? {
-      Symbol::Opcode0 => self.match_opcode0(),
-      Symbol::Opcode1 => self.match_opcode1(),
-      Symbol::Opcode2 => self.match_opcode2(),
-      s @ _ => Err(format!("Expected Opcode, got {:?}", s)),
-    }
-  }
-
   fn match_label(&mut self) -> Result<String, String> {
     let name = self.next_word()?;
     self.expect_token(Token::Colon)?;
@@ -128,47 +134,103 @@ impl<'a> Parser<'a> {
     Ok((name, value))
   }
 
-  fn match_opcode0(&mut self) -> Result<Operation, String> {
-    match self.next_word()?.as_ref() {
-      "nop" => Ok(Operation::Nop),
-      "daa" => Ok(Operation::DecimalAdjustAccumulator),
-      "cpl" => Ok(Operation::Complement),
-      "ccf" => Ok(Operation::ComplementCarry),
-      "scf" => Ok(Operation::SetCarry),
-      "halt" => Ok(Operation::Halt),
-      "stop" => Ok(Operation::Stop),
-      "ei" => Ok(Operation::EnableInterrupts),
-      "di" => Ok(Operation::DisableInterrupts),
-      "rlca" => Ok(Operation::RotateLeftA(true, Address::Register(Reg::A))),
-      "rla" => Ok(Operation::RotateLeftA(false, Address::Register(Reg::A))),
-      "rrca" => Ok(Operation::RotateRightA(true, Address::Register(Reg::A))),
-      "rra" => Ok(Operation::RotateRightA(false, Address::Register(Reg::A))),
-      "ret" => Ok(Operation::Return(Condition::Unconditional)),
-      "reti" => Ok(Operation::ReturnFromInterrupt),
-      s @ _ => Err(format!("Expected opcode0, got {:?}", s)),
+  fn expect_zero_operands(&mut self) -> Result<(), String> {
+    if self.maybe_expect(Symbol::Operand)? {
+      Err("Expected zero operands".to_string())
+    } else {
+      Ok(())
     }
   }
 
-  fn match_opcode1(&mut self) -> Result<Operation, String> {
-    let opcode = self.next_word()?;
+  fn expect_operand(&mut self) -> Result<Address, String> {
     self.expect(Symbol::Operand)?;
     let operand = self.match_operand()?;
-    match opcode.as_ref() {
-      "dec" => Ok(Operation::Decrement(operand)),
-      s @ _ => Err(format!("Expected opcode1, got {:?}", s)),
-    }
+    self.expect(Symbol::MaybeOperand)?;
+    Ok(operand)
   }
 
-  fn match_opcode2(&mut self) -> Result<Operation, String> {
-    let opcode = self.next_word()?;
-    self.expect(Symbol::Operand)?;
-    let operand1 = self.match_operand()?;
+  fn expect_second_operand(&mut self) -> Result<Address, String> {
     self.expect_token(Token::Comma)?;
     self.expect(Symbol::Operand)?;
-    let operand2 = self.match_operand()?;
+    let operand = self.match_operand()?;
+    Ok(operand)
+  }
+
+  fn match_instruction(&mut self) -> Result<Operation, String> {
+    self.expect(Symbol::Opcode)?;
+    let opcode = self.next_word()?;
+    self.expect(Symbol::MaybeOperands)?;
     match opcode.as_ref() {
-      "ld" => Ok(Operation::Load8(operand1, operand2)),
-      s @ _ => Err(format!("Expected opcode2, got {:?}", s)),
+      "nop" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::Nop)
+      }
+      "daa" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::DecimalAdjustAccumulator)
+      }
+      "cpl" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::Complement)
+      }
+      "ccf" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::ComplementCarry)
+      }
+      "scf" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::SetCarry)
+      }
+      "halt" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::Halt)
+      }
+      "stop" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::Stop)
+      }
+      "ei" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::EnableInterrupts)
+      }
+      "di" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::DisableInterrupts)
+      }
+      "rlca" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::RotateLeftA(true, Address::Register(Reg::A)))
+      }
+      "rla" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::RotateLeftA(false, Address::Register(Reg::A)))
+      }
+      "rrca" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::RotateRightA(true, Address::Register(Reg::A)))
+      }
+      "rra" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::RotateRightA(false, Address::Register(Reg::A)))
+      }
+      "ret" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::Return(Condition::Unconditional))
+      }
+      "reti" => {
+        self.expect_zero_operands()?;
+        Ok(Operation::ReturnFromInterrupt)
+      }
+      "dec" => {
+        let operand = self.expect_operand()?;
+        Ok(Operation::Decrement(operand))
+      }
+      "ld" => {
+        let destination = self.expect_operand()?;
+        let source = self.expect_second_operand()?;
+        Ok(Operation::Load8(destination, source))
+      }
+      s @ _ => Err(format!("Expected opcode, got {:?}", s)),
     }
   }
 
