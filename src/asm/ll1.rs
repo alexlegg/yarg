@@ -72,6 +72,7 @@ lazy_static! {
       Operand           := [ Register ]
                            [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
                            [ Constant ]
+                           [ Condition ]
       MaybeOperands     := [ term!(Epsilon) ]
                            [ Operand MaybeOperand ]
       MaybeOperand      := [ term!(Epsilon) ]
@@ -82,6 +83,8 @@ lazy_static! {
                            [ word!("af") ] [ word!("bc") ] [ word!("de") ]
                            [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
       Constant          := [ term!(Number) ]
+      Condition         := [ word!("nz") ] [ word!("z") ]
+                           [ word!("nc") ] [ word!("c_") ]
     ).unwrap()
   };
 }
@@ -100,6 +103,7 @@ pub enum Symbol {
   Instruction,
   Register,
   Constant,
+  Condition,
   Terminal(Terminal),
 }
 
@@ -170,7 +174,7 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
           ))));
         } else {
           return Some(Err(format!(
-            "Expected Alphanumeric, got {:?}",
+            "LL1: Expected Alphanumeric, got {:?}",
             self.token_iter.peek()
           )));
         }
@@ -186,7 +190,7 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
           ))));
         } else {
           return Some(Err(format!(
-            "Expected Numeric, got {:?}",
+            "LL1: Expected Numeric, got {:?}",
             self.token_iter.peek()
           )));
         }
@@ -197,7 +201,7 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
           return Some(Ok(Symbol::Terminal(Terminal::Token(token))));
         } else {
           return Some(Err(format!(
-            "Expected {:?}, got {:?}",
+            "LL1: Expected {:?}, got {:?}",
             token,
             self.token_iter.peek()
           )));
@@ -208,7 +212,7 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
           return None;
         } else {
           return Some(Err(format!(
-            "Expected end of input, got {:?}",
+            "LL1: Expected end of input, got {:?}",
             self.token_iter.peek()
           )));
         }

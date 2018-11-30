@@ -97,8 +97,11 @@ impl Assembler {
       Operation::ReturnFromInterrupt => {
         self.insert(0xd9);
       }
-      Operation::Load8(Address::Register(r), Address::Data8(val)) => {
-        self.insert(0x06 | (encode_reg(r) << 3));
+      Operation::Load8(Address::Register(dest), Address::Register(source)) => {
+        self.insert(0x40 | (encode_reg(dest) << 3) | (encode_reg(source)));
+      }
+      Operation::Load8(Address::Register(dest), Address::Data8(val)) => {
+        self.insert(0x06 | (encode_reg(dest) << 3));
         self.insert(val);
       }
       Operation::Decrement(Address::Register(r)) => {

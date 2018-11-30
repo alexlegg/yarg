@@ -14,12 +14,14 @@ pub enum Statement {
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
   ll1: Peekable<Ll1Parser<Lexer<'a>>>,
+  pending_statement: Option<Statement>,
 }
 
 impl<'a> Parser<'a> {
   pub fn new(input: Chars<'a>) -> Parser<'a> {
     Parser {
       ll1: Ll1Parser::new(Lexer::new(input.peekable())).peekable(),
+      pending_statement: None,
     }
   }
 
@@ -73,51 +75,40 @@ impl<'a> Parser<'a> {
     self.maybe_expect(Symbol::Terminal(Terminal::Token(token)))
   }
 
-  fn match_program(&mut self) -> Option<Result<Statement, String>> {
-    // We may be in two states here: at the beginning of a Program, or at the
-    // beginning of an Instruction following MaybeInstruction.
-    match self.ll1.next()? {
-      Ok(Symbol::Program) => self.match_program(),
-      Ok(Symbol::Statement) => {
-        let statement = self.match_statement();
-        if let Some(Ok(Symbol::Instruction)) = self.ll1.peek() {
-          return Some(statement);
-        }
-        if let Err(e) = self.expect_token(Token::Newline) {
-          return Some(Err(e));
-        }
-        Some(statement)
+  fn match_program(&mut self) -> Result<Option<Statement>, String> {
+    self.expect(Symbol::Program)?;
+    match self.ll1.next() {
+      Some(Ok(Symbol::Statement)) => {
+        let statement = self.match_statement()?;
+        self.expect_token(Token::Newline)?;
+        Ok(Some(statement))
       }
-      Ok(Symbol::Instruction) => {
-        let statement = self.match_instruction().map(|i| Statement::Instruction(i));
-        if let Err(e) = self.expect_token(Token::Newline) {
-          return Some(Err(e));
-        }
-        Some(statement)
-      }
-      s @ Ok(_) => Some(Err(format!(
-        "Expected Program, Statement, or Instruction. Got {:?}",
-        s
-      ))),
-      Err(e) => Some(Err(e)),
+      Some(Ok(s)) => Err(format!("Expected Statement, got {:?}", s)),
+      None => Ok(None),
+      Some(Err(e)) => Err(e),
     }
   }
 
   fn match_statement(&mut self) -> Result<Statement, String> {
     match self.next_symbol()? {
-      Symbol::Instruction => self.match_instruction().map(|i| Statement::Instruction(i)),
+      Symbol::Instruction => {
+        let instr = self.match_instruction()?;
+        Ok(Statement::Instruction(instr))
+      }
       Symbol::Label => {
         let label = self.match_label()?;
         self.expect(Symbol::MaybeInstruction)?;
+        if self.maybe_expect(Symbol::Instruction)? {
+          let instr = self.match_instruction()?;
+          self.pending_statement = Some(Statement::Instruction(instr))
+        }
         Ok(Statement::Label(label))
       }
-      Symbol::Directive => self
-        .match_directive()
-        .map(|(d, v)| Statement::Directive(d, v)),
-      s @ _ => Err(format!(
-        "Expected Instruction, Label, or Directive. Got {:?}",
-        s
-      )),
+      Symbol::Directive => {
+        let (d, v) = self.match_directive()?;
+        Ok(Statement::Directive(d, v))
+      }
+      s => Err(format!("Expected a statement, got {:?}", s)),
     }
   }
 
@@ -147,6 +138,20 @@ impl<'a> Parser<'a> {
     let operand = self.match_operand()?;
     self.expect(Symbol::MaybeOperand)?;
     Ok(operand)
+  }
+
+  fn maybe_expect_operand(&mut self) -> Result<Option<Address>, String> {
+    if self.maybe_expect(Symbol::Operand)? {
+      println!("one");
+      let operand = self.match_operand()?;
+      println!("got op");
+      self.expect(Symbol::MaybeOperand)?;
+      println!("got maybeop");
+      Ok(Some(operand))
+    } else {
+      println!("none");
+      Ok(None)
+    }
   }
 
   fn expect_second_operand(&mut self) -> Result<Address, String> {
@@ -214,8 +219,13 @@ impl<'a> Parser<'a> {
         Ok(Operation::RotateRightA(false, Address::Register(Reg::A)))
       }
       "ret" => {
-        self.expect_zero_operands()?;
-        Ok(Operation::Return(Condition::Unconditional))
+        if let Some(addr) = self.maybe_expect_operand()? {
+          println!("ret one");
+          Ok(Operation::Return(Condition::Unconditional))
+        } else {
+          println!("ret none");
+          Ok(Operation::Return(Condition::Unconditional))
+        }
       }
       "reti" => {
         self.expect_zero_operands()?;
@@ -235,6 +245,7 @@ impl<'a> Parser<'a> {
   }
 
   fn match_operand(&mut self) -> Result<Address, String> {
+    println!("match op");
     match self.next_symbol()? {
       Symbol::Register => self.match_register().map(|r| Address::Register(r)),
       Symbol::Constant => self.match_constant().map(|c| Address::Data8(c)),
@@ -273,7 +284,15 @@ impl<'a> Iterator for Parser<'a> {
   type Item = Result<Statement, String>;
 
   fn next(&mut self) -> Option<Result<Statement, String>> {
-    self.match_program()
+    if let Some(statement) = self.pending_statement.take() {
+      return Some(Ok(statement));
+    }
+    // Convert Result<Option> to Option<Result>.
+    match self.match_program() {
+      Ok(Some(statement)) => Some(Ok(statement)),
+      Ok(None) => None,
+      Err(e) => Some(Err(e)),
+    }
   }
 }
 
@@ -285,14 +304,14 @@ mod test {
   use parser::Statement::*;
 
   #[test]
-  fn nop() {
+  fn zero_operands() {
     let input = "nop\n".to_string();
     let parser = Parser::new(input.chars());
     assert_eq!(parser.parse(), Ok(vec![Instruction(Nop)]));
   }
 
   #[test]
-  fn dec() {
+  fn one_operand() {
     let input = "dec a\n".to_string();
     let parser = Parser::new(input.chars());
     assert_eq!(
@@ -302,12 +321,25 @@ mod test {
   }
 
   #[test]
-  fn ld() {
+  fn two_operands() {
     let input = "ld a, b\n".to_string();
     let parser = Parser::new(input.chars());
     assert_eq!(
       parser.parse(),
       Ok(vec![Instruction(Load8(Register(Reg::A), Register(Reg::B)))])
+    );
+  }
+
+  #[test]
+  fn zero_or_one_operand() {
+    let input = "ret\nret nz\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Instruction(Return(Condition::Unconditional)),
+        Instruction(Return(Condition::Unconditional)),
+      ])
     );
   }
 
