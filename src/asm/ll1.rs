@@ -35,56 +35,67 @@ lazy_static! {
     use ll1::Symbol::*;
     use ll1::Terminal::*;
     grammar!(
-      Program           := [ term!(Epsilon) ]
-                           [ Statement tkn!(Newline) Program ]
-      Statement         := [ Label MaybeInstruction ]
-                           [ Instruction ]
-                           [ Directive ]
-      MaybeInstruction  := [ term!(Epsilon) ]
-                           [ Instruction ]
-      Directive         := [ tkn!(Dot) word!("bank") term!(Alphanumeric) ]
-      Label             := [ term!(Alphanumeric) tkn!(Colon) ]
-      Nop               := [ word!("nop") ]
-      Daa               := [ word!("daa") ]
-      Cpl               := [ word!("cpl") ]
-      Ccf               := [ word!("ccf") ]
-      Scf               := [ word!("scf") ]
-      Halt              := [ word!("halt") ]
-      Stop              := [ word!("stop") ]
-      Ei                := [ word!("ei") ]
-      Di                := [ word!("di") ]
-      Rlca              := [ word!("rlca") ]
-      Rla               := [ word!("rla") ]
-      Rrca              := [ word!("rrca") ]
-      Rra               := [ word!("rra") ]
-      Reti              := [ word!("reti") ]
-      Push              := [ word!("push") ]
-      Pop               := [ word!("pop") ]
-      Dec               := [ word!("dec") Operand ]
-      Inc               := [ word!("inc") Operand ]
-      Sub               := [ word!("sub") Operand ]
-      And               := [ word!("and") Operand ]
-      Xor               := [ word!("xor") Operand ]
-      Or                := [ word!("or") Operand ]
-      Cp                := [ word!("cp") Operand ]
-      Ret               := [ word!("ret") MaybeCondition ]
-      Ld                := [ word!("ld") Operand tkn!(Comma) Operand ]
-      Operand           := [ Register ]
-                           [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
-                           [ Constant ]
-      Instruction       := [ Nop ] [ Daa ] [ Cpl ] [ Ccf ] [ Scf ] [ Halt ]
-                           [ Stop ] [ Ei ] [ Di ] [ Rlca ] [ Rla ] [ Rrca ]
-                           [ Rra ] [ Reti ] [ Inc ] [ Dec ] [ Sub ] [ And ]
-                           [ Xor ] [ Or ] [ Cp ] [ Push ] [ Pop ] [ Ret ]
-                           [ Ld ]
-      Register          := [ word!("a") ] [ word!("b") ] [ word!("c") ]
-                           [ word!("d") ] [ word!("e") ] [ word!("f") ]
-                           [ word!("af") ] [ word!("bc") ] [ word!("de") ]
-                           [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
-      Constant          := [ term!(Number) ]
-      Condition         := [ word!("nz") ] [ word!("z") ]
-                           [ word!("nc") ] [ word!("c") ]
-      MaybeCondition    := [ term!(Epsilon) ] [ Condition ]
+      Program             := [ term!(Epsilon) ]
+                             [ Statement tkn!(Newline) Program ]
+      Statement           := [ Label MaybeInstruction ]
+                             [ Instruction ]
+                             [ Directive ]
+      MaybeInstruction    := [ term!(Epsilon) ]
+                             [ Instruction ]
+      Directive           := [ tkn!(Dot) word!("bank") term!(Alphanumeric) ]
+      Label               := [ term!(Alphanumeric) tkn!(Colon) ]
+      Nop                 := [ word!("nop") ]
+      Daa                 := [ word!("daa") ]
+      Cpl                 := [ word!("cpl") ]
+      Ccf                 := [ word!("ccf") ]
+      Scf                 := [ word!("scf") ]
+      Halt                := [ word!("halt") ]
+      Stop                := [ word!("stop") ]
+      Ei                  := [ word!("ei") ]
+      Di                  := [ word!("di") ]
+      Rlca                := [ word!("rlca") ]
+      Rla                 := [ word!("rla") ]
+      Rrca                := [ word!("rrca") ]
+      Rra                 := [ word!("rra") ]
+      Reti                := [ word!("reti") ]
+      Push                := [ word!("push") Operand ]
+      Pop                 := [ word!("pop") Operand ]
+      Dec                 := [ word!("dec") Operand ]
+      Inc                 := [ word!("inc") Operand ]
+      Sub                 := [ word!("sub") Operand ]
+      And                 := [ word!("and") Operand ]
+      Xor                 := [ word!("xor") Operand ]
+      Or                  := [ word!("or") Operand ]
+      Cp                  := [ word!("cp") Operand ]
+      Ret                 := [ word!("ret") MaybeConditionOnly ]
+      Jr                  := [ word!("jr") MaybeCondition Constant ]
+      Jp                  := [ word!("jp") MaybeCondition Constant ]
+      Call                := [ word!("call") MaybeCondition Constant ]
+      Ld                  := [ word!("ld") Operand tkn!(Comma) Operand ]
+      Ldh                 := [ word!("ldh") Operand tkn!(Comma) Operand ]
+      Ldi                 := [ word!("ldi") Operand tkn!(Comma) Operand ]
+      Ldd                 := [ word!("ldd") Operand tkn!(Comma) Operand ]
+      Add                 := [ word!("add") Operand tkn!(Comma) Operand ]
+      Adc                 := [ word!("adc") Operand tkn!(Comma) Operand ]
+      Sbc                 := [ word!("sbc") Operand tkn!(Comma) Operand ]
+      Operand             := [ Register ]
+                             [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
+                             [ Constant ]
+      Instruction         := [ Nop ] [ Daa ] [ Cpl ] [ Ccf ] [ Scf ] [ Halt ]
+                             [ Stop ] [ Ei ] [ Di ] [ Rlca ] [ Rla ] [ Rrca ]
+                             [ Rra ] [ Reti ] [ Inc ] [ Dec ] [ Sub ] [ And ]
+                             [ Xor ] [ Or ] [ Cp ] [ Push ] [ Pop ] [ Ret ]
+                             [ Ld ] [ Ldh ] [ Ldi ] [ Ldd ] [ Add ] [ Adc ]
+                             [ Sbc ] [ Jr ] [ Jp ] [ Call ]
+      Register            := [ word!("a") ] [ word!("b") ] [ word!("c") ]
+                             [ word!("d") ] [ word!("e") ] [ word!("f") ]
+                             [ word!("af") ] [ word!("bc") ] [ word!("de") ]
+                             [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
+      Constant            := [ term!(Number) ]
+      Condition           := [ word!("nz") ] [ word!("z") ]
+                             [ word!("nc") ] [ word!("c") ]
+      MaybeConditionOnly  := [ term!(Epsilon) ] [ Condition ]
+      MaybeCondition      := [ term!(Epsilon) ] [ Condition tkn!(Comma) ]
     ).unwrap()
   };
 }
@@ -100,6 +111,7 @@ pub enum Symbol {
   Instruction,
   Register,
   Constant,
+  MaybeConditionOnly,
   MaybeCondition,
   Condition,
   Nop,
@@ -127,6 +139,15 @@ pub enum Symbol {
   Pop,
   Ret,
   Ld,
+  Ldh,
+  Ldi,
+  Ldd,
+  Add,
+  Adc,
+  Sbc,
+  Jr,
+  Jp,
+  Call,
   Terminal(Terminal),
 }
 
@@ -433,7 +454,7 @@ mod test {
   }
 
   #[test]
-  fn maybe_condition_not_present() {
+  fn maybe_condition_only_not_present() {
     let tokens = vec![Word("ret".to_string()), Newline];
     let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
@@ -444,7 +465,7 @@ mod test {
         Instruction,
         Ret,
         Terminal(Token(Word("ret".to_string()))),
-        MaybeCondition,
+        MaybeConditionOnly,
         Terminal(Token(Newline)),
         Program,
       ])
@@ -452,7 +473,7 @@ mod test {
   }
 
   #[test]
-  fn maybe_condition_present() {
+  fn maybe_condition_only_present() {
     let tokens = vec![Word("ret".to_string()), Word("nz".to_string()), Newline];
     let parser = Ll1Parser::new(tokens.into_iter());
     assert_eq!(
@@ -463,9 +484,60 @@ mod test {
         Instruction,
         Ret,
         Terminal(Token(Word("ret".to_string()))),
+        MaybeConditionOnly,
+        Condition,
+        Terminal(Token(Word("nz".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn maybe_condition_not_present() {
+    let tokens = vec![Word("jr".to_string()), Word("123".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Jr,
+        Terminal(Token(Word("jr".to_string()))),
+        MaybeCondition,
+        Constant,
+        Terminal(Token(Word("123".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn maybe_condition_present() {
+    let tokens = vec![
+      Word("jr".to_string()),
+      Word("nz".to_string()),
+      Comma,
+      Word("123".to_string()),
+      Newline,
+    ];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Jr,
+        Terminal(Token(Word("jr".to_string()))),
         MaybeCondition,
         Condition,
         Terminal(Token(Word("nz".to_string()))),
+        Terminal(Token(Comma)),
+        Constant,
+        Terminal(Token(Word("123".to_string()))),
         Terminal(Token(Newline)),
         Program,
       ])

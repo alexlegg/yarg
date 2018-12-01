@@ -250,12 +250,31 @@ impl<'a> Parser<'a> {
       }
       Symbol::Ret => {
         self.expect_word("ret")?;
-        self.expect(Symbol::MaybeCondition)?;
+        self.expect(Symbol::MaybeConditionOnly)?;
         if self.maybe_expect(Symbol::Condition)? {
           let condition = self.match_condition()?;
           Ok(Operation::Return(condition))
         } else {
           Ok(Operation::Return(Condition::Unconditional))
+        }
+      }
+      Symbol::Jr => {
+        self.expect_word("jr")?;
+        self.expect(Symbol::MaybeCondition)?;
+        if self.maybe_expect(Symbol::Condition)? {
+          let condition = self.match_condition()?;
+          self.expect_token(Token::Comma)?;
+          self.expect(Symbol::Constant)?;
+          let source = self
+            .match_constant()
+            .map(|c| LazyAddress::Resolved(Address::Relative(c)))?;
+          Ok(Operation::Jump(condition, source))
+        } else {
+          self.expect(Symbol::Constant)?;
+          let source = self
+            .match_constant()
+            .map(|c| LazyAddress::Resolved(Address::Relative(c)))?;
+          Ok(Operation::Jump(Condition::Unconditional, source))
         }
       }
       Symbol::Ld => {
@@ -375,7 +394,7 @@ mod test {
   }
 
   #[test]
-  fn zero_or_one_operand() {
+  fn optional_condition() {
     let input = "ret\nret nz\n".to_string();
     let parser = Parser::new(input.chars());
     assert_eq!(
@@ -383,6 +402,19 @@ mod test {
       Ok(vec![
         Instruction(Return(Condition::Unconditional)),
         Instruction(Return(Condition::NonZero)),
+      ])
+    );
+  }
+
+  #[test]
+  fn operand_with_optional_condition() {
+    let input = "jr 42\njr nz, 42\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Instruction(Jump(Condition::Unconditional, Resolved(Relative(42)))),
+        Instruction(Jump(Condition::NonZero, Resolved(Relative(42)))),
       ])
     );
   }
