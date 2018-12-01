@@ -60,7 +60,7 @@ fn decode_condition(c: u8) -> Condition {
   }
 }
 
-pub fn decode<F>(opcode: u8, read_operand8: F) -> Result<(u16, Operation), String>
+pub fn decode<F>(opcode: u8, read_operand8: F) -> Result<(u16, Operation<Address>), String>
 where
   F: Fn(u16) -> Result<u8, String>,
 {
@@ -418,7 +418,7 @@ where
   }
 }
 
-pub fn decode_prefixed(opcode: u8) -> Result<Operation, String> {
+pub fn decode_prefixed(opcode: u8) -> Result<Operation<Address>, String> {
   match opcode {
     // RLC <reg8>
     0x00...0x07 => {

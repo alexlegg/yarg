@@ -8,7 +8,13 @@ use std::str::Chars;
 pub enum Statement {
   Directive(String, String),
   Label(String),
-  Instruction(Operation),
+  Instruction(Operation<LazyAddress>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LazyAddress {
+  Unresolved(String),
+  Resolved(Address),
 }
 
 #[derive(Debug, Clone)]
@@ -130,7 +136,7 @@ impl<'a> Parser<'a> {
     Ok((name, value))
   }
 
-  fn match_instruction(&mut self) -> Result<Operation, String> {
+  fn match_instruction(&mut self) -> Result<Operation<LazyAddress>, String> {
     match self.next_symbol()? {
       Symbol::Nop => {
         self.expect_word("nop")?;
@@ -265,10 +271,14 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn match_operand(&mut self) -> Result<Address, String> {
+  fn match_operand(&mut self) -> Result<LazyAddress, String> {
     match self.next_symbol()? {
-      Symbol::Register => self.match_register().map(|r| Address::Register(r)),
-      Symbol::Constant => self.match_constant().map(|c| Address::Data8(c)),
+      Symbol::Register => self
+        .match_register()
+        .map(|r| LazyAddress::Resolved(Address::Register(r))),
+      Symbol::Constant => self
+        .match_constant()
+        .map(|c| LazyAddress::Resolved(Address::Data8(c))),
       s @ _ => Err(format!("Expected Register, or Constant. Got {:?}", s)),
     }
   }
@@ -328,6 +338,7 @@ impl<'a> Iterator for Parser<'a> {
 
 #[cfg(test)]
 mod test {
+  use super::LazyAddress::*;
   use super::*;
   use operation::Address::*;
   use operation::Operation::*;
@@ -346,7 +357,7 @@ mod test {
     let parser = Parser::new(input.chars());
     assert_eq!(
       parser.parse(),
-      Ok(vec![Instruction(Decrement(Register(Reg::A)))])
+      Ok(vec![Instruction(Decrement(Resolved(Register(Reg::A))))])
     );
   }
 
@@ -356,7 +367,10 @@ mod test {
     let parser = Parser::new(input.chars());
     assert_eq!(
       parser.parse(),
-      Ok(vec![Instruction(Load8(Register(Reg::A), Register(Reg::B)))])
+      Ok(vec![Instruction(Load8(
+        Resolved(Register(Reg::A)),
+        Resolved(Register(Reg::B))
+      ))])
     );
   }
 
@@ -379,7 +393,10 @@ mod test {
     let parser = Parser::new(input.chars());
     assert_eq!(
       parser.parse(),
-      Ok(vec![Instruction(Load8(Register(Reg::A), Data8(10)))])
+      Ok(vec![Instruction(Load8(
+        Resolved(Register(Reg::A)),
+        Resolved(Data8(10))
+      ))])
     );
   }
 
@@ -419,7 +436,10 @@ mod test {
       Ok(vec![
         Label("label".to_string()),
         Instruction(Nop),
-        Instruction(Load8(Register(Reg::A), Register(Reg::B))),
+        Instruction(Load8(
+          Resolved(Register(Reg::A)),
+          Resolved(Register(Reg::B))
+        )),
       ])
     );
   }
@@ -432,7 +452,10 @@ mod test {
       parser.parse(),
       Ok(vec![
         Instruction(Nop),
-        Instruction(Load8(Register(Reg::A), Register(Reg::B))),
+        Instruction(Load8(
+          Resolved(Register(Reg::A)),
+          Resolved(Register(Reg::B))
+        )),
       ])
     );
   }
@@ -445,7 +468,10 @@ mod test {
       parser.parse(),
       Ok(vec![
         Instruction(Nop),
-        Instruction(Load8(Register(Reg::A), Register(Reg::B))),
+        Instruction(Load8(
+          Resolved(Register(Reg::A)),
+          Resolved(Register(Reg::B))
+        )),
       ])
     );
   }

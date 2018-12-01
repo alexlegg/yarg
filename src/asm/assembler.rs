@@ -1,6 +1,6 @@
 use cartridge::Header;
 use operation::{Address, Condition, Operation, Reg};
-use parser::Statement;
+use parser::{LazyAddress, Statement};
 
 struct Assembler {
   data: Vec<u8>,
@@ -50,7 +50,7 @@ impl Assembler {
     self.cur += 1;
   }
 
-  fn encode_operation(&mut self, operation: Operation) -> Result<(), String> {
+  fn encode_operation(&mut self, operation: Operation<LazyAddress>) -> Result<(), String> {
     match operation {
       Operation::Nop => {
         self.insert(0x00);
@@ -100,14 +100,20 @@ impl Assembler {
       Operation::ReturnFromInterrupt => {
         self.insert(0xd9);
       }
-      Operation::Load8(Address::Register(dest), Address::Register(source)) => {
+      Operation::Load8(
+        LazyAddress::Resolved(Address::Register(dest)),
+        LazyAddress::Resolved(Address::Register(source)),
+      ) => {
         self.insert(0x40 | (encode_reg(dest) << 3) | (encode_reg(source)));
       }
-      Operation::Load8(Address::Register(dest), Address::Data8(val)) => {
+      Operation::Load8(
+        LazyAddress::Resolved(Address::Register(dest)),
+        LazyAddress::Resolved(Address::Data8(val)),
+      ) => {
         self.insert(0x06 | (encode_reg(dest) << 3));
         self.insert(val);
       }
-      Operation::Decrement(Address::Register(r)) => {
+      Operation::Decrement(LazyAddress::Resolved(Address::Register(r))) => {
         self.insert(0x05 | (encode_reg(r) << 3));
       }
       _ => {

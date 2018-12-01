@@ -9,7 +9,7 @@ use std::fs;
 const DEBUG_STREAM_SIZE: usize = 15;
 
 pub struct Emulator {
-  instruction_stream: VecDeque<(u16, Operation)>,
+  instruction_stream: VecDeque<(u16, Operation<Address>)>,
   cpu: Cpu,
   breakpoints: Vec<u16>,
   at_breakpoint: bool,
@@ -567,7 +567,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
   }
 }
 
-fn get_inst(cpu: &Cpu) -> Result<(u16, Operation), String> {
+fn get_inst(cpu: &Cpu) -> Result<(u16, Operation<Address>), String> {
   let pc = cpu.get_reg16(Reg::PC)?;
   let opcode = cpu.read_mem8(pc)?;
   let get_operand = |operand| cpu.read_mem8(pc + operand);
