@@ -44,47 +44,47 @@ lazy_static! {
                            [ Instruction ]
       Directive         := [ tkn!(Dot) word!("bank") term!(Alphanumeric) ]
       Label             := [ term!(Alphanumeric) tkn!(Colon) ]
-      Opcode            := [ word!("nop") ]
-                           [ word!("daa") ]
-                           [ word!("cpl") ]
-                           [ word!("ccf") ]
-                           [ word!("scf") ]
-                           [ word!("halt") ]
-                           [ word!("stop") ]
-                           [ word!("ei") ]
-                           [ word!("di") ]
-                           [ word!("rlca") ]
-                           [ word!("rla") ]
-                           [ word!("rrca") ]
-                           [ word!("rra") ]
-                           [ word!("reti") ]
-                           [ word!("inc") ]
-                           [ word!("dec") ]
-                           [ word!("sub") ]
-                           [ word!("and") ]
-                           [ word!("xor") ]
-                           [ word!("or") ]
-                           [ word!("cp") ]
-                           [ word!("push") ]
-                           [ word!("pop") ]
-                           [ word!("ret") ]
-                           [ word!("ld") ]
+      Nop               := [ word!("nop") ]
+      Daa               := [ word!("daa") ]
+      Cpl               := [ word!("cpl") ]
+      Ccf               := [ word!("ccf") ]
+      Scf               := [ word!("scf") ]
+      Halt              := [ word!("halt") ]
+      Stop              := [ word!("stop") ]
+      Ei                := [ word!("ei") ]
+      Di                := [ word!("di") ]
+      Rlca              := [ word!("rlca") ]
+      Rla               := [ word!("rla") ]
+      Rrca              := [ word!("rrca") ]
+      Rra               := [ word!("rra") ]
+      Reti              := [ word!("reti") ]
+      Push              := [ word!("push") ]
+      Pop               := [ word!("pop") ]
+      Dec               := [ word!("dec") Operand ]
+      Inc               := [ word!("inc") Operand ]
+      Sub               := [ word!("sub") Operand ]
+      And               := [ word!("and") Operand ]
+      Xor               := [ word!("xor") Operand ]
+      Or                := [ word!("or") Operand ]
+      Cp                := [ word!("cp") Operand ]
+      Ret               := [ word!("ret") MaybeCondition ]
+      Ld                := [ word!("ld") Operand tkn!(Comma) Operand ]
       Operand           := [ Register ]
                            [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
                            [ Constant ]
-                           [ Condition ]
-      MaybeOperands     := [ term!(Epsilon) ]
-                           [ Operand MaybeOperand ]
-      MaybeOperand      := [ term!(Epsilon) ]
-                           [ tkn!(Comma) Operand ]
-      Instruction       := [ Opcode MaybeOperands ]
+      Instruction       := [ Nop ] [ Daa ] [ Cpl ] [ Ccf ] [ Scf ] [ Halt ]
+                           [ Stop ] [ Ei ] [ Di ] [ Rlca ] [ Rla ] [ Rrca ]
+                           [ Rra ] [ Reti ] [ Inc ] [ Dec ] [ Sub ] [ And ]
+                           [ Xor ] [ Or ] [ Cp ] [ Push ] [ Pop ] [ Ret ]
+                           [ Ld ]
       Register          := [ word!("a") ] [ word!("b") ] [ word!("c") ]
                            [ word!("d") ] [ word!("e") ] [ word!("f") ]
                            [ word!("af") ] [ word!("bc") ] [ word!("de") ]
                            [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
       Constant          := [ term!(Number) ]
       Condition         := [ word!("nz") ] [ word!("z") ]
-                           [ word!("nc") ] [ word!("c_") ]
+                           [ word!("nc") ] [ word!("c") ]
+      MaybeCondition    := [ term!(Epsilon) ] [ Condition ]
     ).unwrap()
   };
 }
@@ -96,14 +96,37 @@ pub enum Symbol {
   MaybeInstruction,
   Directive,
   Label,
-  Opcode,
   Operand,
-  MaybeOperands,
-  MaybeOperand,
   Instruction,
   Register,
   Constant,
+  MaybeCondition,
   Condition,
+  Nop,
+  Daa,
+  Cpl,
+  Ccf,
+  Scf,
+  Halt,
+  Stop,
+  Ei,
+  Di,
+  Rlca,
+  Rla,
+  Rrca,
+  Rra,
+  Reti,
+  Inc,
+  Dec,
+  Sub,
+  And,
+  Xor,
+  Or,
+  Cp,
+  Push,
+  Pop,
+  Ret,
+  Ld,
   Terminal(Terminal),
 }
 
@@ -380,9 +403,8 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode,
+        Nop,
         Terminal(Token(Word("nop".to_string()))),
-        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
       ])
@@ -399,13 +421,51 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode,
+        Dec,
         Terminal(Token(Word("dec".to_string()))),
-        MaybeOperands,
         Operand,
         Register,
         Terminal(Token(Word("a".to_string()))),
-        MaybeOperand,
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn maybe_condition_not_present() {
+    let tokens = vec![Word("ret".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Ret,
+        Terminal(Token(Word("ret".to_string()))),
+        MaybeCondition,
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn maybe_condition_present() {
+    let tokens = vec![Word("ret".to_string()), Word("nz".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Ret,
+        Terminal(Token(Word("ret".to_string()))),
+        MaybeCondition,
+        Condition,
+        Terminal(Token(Word("nz".to_string()))),
         Terminal(Token(Newline)),
         Program,
       ])
@@ -428,13 +488,11 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode,
+        Ld,
         Terminal(Token(Word("ld".to_string()))),
-        MaybeOperands,
         Operand,
         Register,
         Terminal(Token(Word("a".to_string()))),
-        MaybeOperand,
         Terminal(Token(Comma)),
         Operand,
         Register,
@@ -461,13 +519,11 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode,
+        Ld,
         Terminal(Token(Word("ld".to_string()))),
-        MaybeOperands,
         Operand,
         Register,
         Terminal(Token(Word("a".to_string()))),
-        MaybeOperand,
         Terminal(Token(Comma)),
         Operand,
         Constant,
@@ -493,16 +549,14 @@ mod test {
         Program,
         Statement,
         Instruction,
-        Opcode,
+        Nop,
         Terminal(Token(Word("nop".to_string()))),
-        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
         Statement,
         Instruction,
-        Opcode,
+        Nop,
         Terminal(Token(Word("nop".to_string()))),
-        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
       ])
@@ -547,9 +601,8 @@ mod test {
         Terminal(Token(Colon)),
         MaybeInstruction,
         Instruction,
-        Opcode,
+        Nop,
         Terminal(Token(Word("nop".to_string()))),
-        MaybeOperands,
         Terminal(Token(Newline)),
         Program,
       ])

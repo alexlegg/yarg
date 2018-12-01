@@ -56,6 +56,15 @@ impl<'a> Parser<'a> {
     }
   }
 
+  fn expect_word(&mut self, word: &str) -> Result<(), String> {
+    let next = self.next_word()?;
+    if next == word {
+      Ok(())
+    } else {
+      Err(format!("Expected {:?}, got {:?}", word, next))
+    }
+  }
+
   fn maybe_expect(&mut self, symbol: Symbol) -> Result<bool, String> {
     let peek_matches = match self.ll1.peek() {
       Some(Ok(next)) => *next == symbol,
@@ -133,114 +142,138 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn expect_operand(&mut self) -> Result<Address, String> {
-    self.expect(Symbol::Operand)?;
-    let operand = self.match_operand()?;
-    self.expect(Symbol::MaybeOperand)?;
-    Ok(operand)
-  }
-
-  fn maybe_expect_operand(&mut self) -> Result<Option<Address>, String> {
-    if self.maybe_expect(Symbol::Operand)? {
-      println!("one");
-      let operand = self.match_operand()?;
-      println!("got op");
-      self.expect(Symbol::MaybeOperand)?;
-      println!("got maybeop");
-      Ok(Some(operand))
-    } else {
-      println!("none");
-      Ok(None)
-    }
-  }
-
-  fn expect_second_operand(&mut self) -> Result<Address, String> {
-    self.expect_token(Token::Comma)?;
-    self.expect(Symbol::Operand)?;
-    let operand = self.match_operand()?;
-    Ok(operand)
-  }
-
   fn match_instruction(&mut self) -> Result<Operation, String> {
-    self.expect(Symbol::Opcode)?;
-    let opcode = self.next_word()?;
-    self.expect(Symbol::MaybeOperands)?;
-    match opcode.as_ref() {
-      "nop" => {
-        self.expect_zero_operands()?;
+    match self.next_symbol()? {
+      Symbol::Nop => {
+        self.expect_word("nop")?;
         Ok(Operation::Nop)
       }
-      "daa" => {
-        self.expect_zero_operands()?;
+      Symbol::Daa => {
+        self.expect_word("daa")?;
         Ok(Operation::DecimalAdjustAccumulator)
       }
-      "cpl" => {
-        self.expect_zero_operands()?;
+      Symbol::Cpl => {
+        self.expect_word("cpl")?;
         Ok(Operation::Complement)
       }
-      "ccf" => {
-        self.expect_zero_operands()?;
+      Symbol::Ccf => {
+        self.expect_word("ccf")?;
         Ok(Operation::ComplementCarry)
       }
-      "scf" => {
-        self.expect_zero_operands()?;
+      Symbol::Scf => {
+        self.expect_word("scf")?;
         Ok(Operation::SetCarry)
       }
-      "halt" => {
-        self.expect_zero_operands()?;
+      Symbol::Halt => {
+        self.expect_word("halt")?;
         Ok(Operation::Halt)
       }
-      "stop" => {
-        self.expect_zero_operands()?;
+      Symbol::Stop => {
+        self.expect_word("stop")?;
         Ok(Operation::Stop)
       }
-      "ei" => {
-        self.expect_zero_operands()?;
+      Symbol::Ei => {
+        self.expect_word("ei")?;
         Ok(Operation::EnableInterrupts)
       }
-      "di" => {
-        self.expect_zero_operands()?;
+      Symbol::Di => {
+        self.expect_word("di")?;
         Ok(Operation::DisableInterrupts)
       }
-      "rlca" => {
-        self.expect_zero_operands()?;
+      Symbol::Rlca => {
+        self.expect_word("rlca")?;
         Ok(Operation::RotateLeftA(true, Address::Register(Reg::A)))
       }
-      "rla" => {
-        self.expect_zero_operands()?;
+      Symbol::Rla => {
+        self.expect_word("rla")?;
         Ok(Operation::RotateLeftA(false, Address::Register(Reg::A)))
       }
-      "rrca" => {
-        self.expect_zero_operands()?;
+      Symbol::Rrca => {
+        self.expect_word("rrca")?;
         Ok(Operation::RotateRightA(true, Address::Register(Reg::A)))
       }
-      "rra" => {
-        self.expect_zero_operands()?;
+      Symbol::Rra => {
+        self.expect_word("rra")?;
         Ok(Operation::RotateRightA(false, Address::Register(Reg::A)))
       }
-      "ret" => {
-        if let Some(addr) = self.maybe_expect_operand()? {
-          println!("ret one");
-          Ok(Operation::Return(Condition::Unconditional))
+      Symbol::Reti => {
+        self.expect_word("reti")?;
+        Ok(Operation::ReturnFromInterrupt)
+      }
+      Symbol::Inc => {
+        self.expect_word("inc")?;
+        self.expect(Symbol::Operand)?;
+        let destination = self.match_operand()?;
+        Ok(Operation::Increment(destination))
+      }
+      Symbol::Dec => {
+        self.expect_word("dec")?;
+        self.expect(Symbol::Operand)?;
+        let destination = self.match_operand()?;
+        Ok(Operation::Decrement(destination))
+      }
+      Symbol::Sub => {
+        self.expect_word("sub")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_operand()?;
+        Ok(Operation::Sub(source))
+      }
+      Symbol::And => {
+        self.expect_word("and")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_operand()?;
+        Ok(Operation::And(source))
+      }
+      Symbol::Xor => {
+        self.expect_word("xor")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_operand()?;
+        Ok(Operation::Xor(source))
+      }
+      Symbol::Or => {
+        self.expect_word("or")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_operand()?;
+        Ok(Operation::Or(source))
+      }
+      Symbol::Cp => {
+        self.expect_word("cp")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_operand()?;
+        Ok(Operation::Compare(source))
+      }
+      Symbol::Push => {
+        self.expect_word("push")?;
+        self.expect(Symbol::Operand)?;
+        let value = self.match_operand()?;
+        Ok(Operation::Push(value))
+      }
+      Symbol::Pop => {
+        self.expect_word("pop")?;
+        self.expect(Symbol::Operand)?;
+        let value = self.match_operand()?;
+        Ok(Operation::Pop(value))
+      }
+      Symbol::Ret => {
+        self.expect_word("ret")?;
+        self.expect(Symbol::MaybeCondition)?;
+        if self.maybe_expect(Symbol::Condition)? {
+          let condition = self.match_condition()?;
+          Ok(Operation::Return(condition))
         } else {
-          println!("ret none");
           Ok(Operation::Return(Condition::Unconditional))
         }
       }
-      "reti" => {
-        self.expect_zero_operands()?;
-        Ok(Operation::ReturnFromInterrupt)
-      }
-      "dec" => {
-        let operand = self.expect_operand()?;
-        Ok(Operation::Decrement(operand))
-      }
-      "ld" => {
-        let destination = self.expect_operand()?;
-        let source = self.expect_second_operand()?;
+      Symbol::Ld => {
+        self.expect_word("ld")?;
+        self.expect(Symbol::Operand)?;
+        let destination = self.match_operand()?;
+        self.expect_token(Token::Comma)?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_operand()?;
         Ok(Operation::Load8(destination, source))
       }
-      s @ _ => Err(format!("Expected opcode, got {:?}", s)),
+      s => Err(format!("Expected instruction, got {:?}", s)),
     }
   }
 
@@ -277,6 +310,16 @@ impl<'a> Parser<'a> {
       .next_word()?
       .parse::<u8>()
       .map_err(|e| format!("Failed to parse number: {:?}", e))
+  }
+
+  fn match_condition(&mut self) -> Result<Condition, String> {
+    match self.next_word()?.as_ref() {
+      "c" => Ok(Condition::Carry),
+      "nc" => Ok(Condition::NonCarry),
+      "z" => Ok(Condition::Zero),
+      "nz" => Ok(Condition::NonZero),
+      s => Err(format!("Expected condition, got {:?}", s)),
+    }
   }
 }
 
@@ -338,7 +381,7 @@ mod test {
       parser.parse(),
       Ok(vec![
         Instruction(Return(Condition::Unconditional)),
-        Instruction(Return(Condition::Unconditional)),
+        Instruction(Return(Condition::NonZero)),
       ])
     );
   }
