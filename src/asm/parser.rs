@@ -80,10 +80,6 @@ impl<'a> Parser<'a> {
     self.expect(Symbol::Terminal(Terminal::Token(token)))
   }
 
-  fn maybe_expect_token(&mut self, token: Token) -> Result<bool, String> {
-    self.maybe_expect(Symbol::Terminal(Terminal::Token(token)))
-  }
-
   fn match_program(&mut self) -> Result<Option<Statement>, String> {
     self.expect(Symbol::Program)?;
     match self.ll1.next() {
@@ -134,14 +130,6 @@ impl<'a> Parser<'a> {
     Ok((name, value))
   }
 
-  fn expect_zero_operands(&mut self) -> Result<(), String> {
-    if self.maybe_expect(Symbol::Operand)? {
-      Err("Expected zero operands".to_string())
-    } else {
-      Ok(())
-    }
-  }
-
   fn match_instruction(&mut self) -> Result<Operation, String> {
     match self.next_symbol()? {
       Symbol::Nop => {
@@ -182,19 +170,19 @@ impl<'a> Parser<'a> {
       }
       Symbol::Rlca => {
         self.expect_word("rlca")?;
-        Ok(Operation::RotateLeftA(true, Address::Register(Reg::A)))
+        Ok(Operation::RotateLeftA(true))
       }
       Symbol::Rla => {
         self.expect_word("rla")?;
-        Ok(Operation::RotateLeftA(false, Address::Register(Reg::A)))
+        Ok(Operation::RotateLeftA(false))
       }
       Symbol::Rrca => {
         self.expect_word("rrca")?;
-        Ok(Operation::RotateRightA(true, Address::Register(Reg::A)))
+        Ok(Operation::RotateRightA(true))
       }
       Symbol::Rra => {
         self.expect_word("rra")?;
-        Ok(Operation::RotateRightA(false, Address::Register(Reg::A)))
+        Ok(Operation::RotateRightA(false))
       }
       Symbol::Reti => {
         self.expect_word("reti")?;
@@ -278,7 +266,6 @@ impl<'a> Parser<'a> {
   }
 
   fn match_operand(&mut self) -> Result<Address, String> {
-    println!("match op");
     match self.next_symbol()? {
       Symbol::Register => self.match_register().map(|r| Address::Register(r)),
       Symbol::Constant => self.match_constant().map(|c| Address::Data8(c)),

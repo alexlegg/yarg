@@ -103,7 +103,7 @@ where
       Ok((2, Operation::Load8(destination, source)))
     }
     // RLCA
-    0x07 => Ok((1, Operation::RotateLeftA(true, Address::Register(Reg::A)))),
+    0x07 => Ok((1, Operation::RotateLeftA(true))),
     // DEC <reg>
     0x05 | 0x0d | 0x15 | 0x1d | 0x25 | 0x2d | 0x35 | 0x3d => {
       let destination = opcode_reg(bits(5, 3, opcode));
@@ -132,7 +132,7 @@ where
       Ok((1, Operation::Load8(destination, source)))
     }
     // RRCA
-    0x0f => Ok((1, Operation::RotateRightA(true, Address::Register(Reg::A)))),
+    0x0f => Ok((1, Operation::RotateRightA(true))),
     // LD (DE), A
     0x12 => {
       let destination = Address::Indirect(Reg::DE);
@@ -140,7 +140,7 @@ where
       Ok((1, Operation::Load8(destination, source)))
     }
     // RLA
-    0x17 => Ok((1, Operation::RotateLeftA(false, Address::Register(Reg::A)))),
+    0x17 => Ok((1, Operation::RotateLeftA(false))),
     // JR <rel8>
     0x18 => {
       let condition = Condition::Unconditional;
@@ -154,7 +154,7 @@ where
       Ok((1, Operation::Load8(destination, source)))
     }
     // RRA
-    0x1f => Ok((1, Operation::RotateRightA(false, Address::Register(Reg::A)))),
+    0x1f => Ok((1, Operation::RotateRightA(false))),
     // JR <cond>, <rel8>
     0x20 | 0x28 | 0x30 | 0x38 => {
       let condition = decode_condition(bits(4, 3, opcode));

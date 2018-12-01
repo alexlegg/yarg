@@ -440,8 +440,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       cpu.push_stack(next_pc)?;
       cpu.set_pc(addr)
     }
-    Operation::RotateLeftA(copy_carry, destination) => {
-      let val = cpu.get_address8(destination)?;
+    Operation::RotateLeftA(copy_carry) => {
+      let val = cpu.get_reg8(Reg::A)?;
       let mut val_next = val << 1;
       if copy_carry {
         val_next |= val >> 7;
@@ -454,10 +454,10 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       cpu.set_flag(Flag::Z, false);
       cpu.set_flag(Flag::H, false);
       cpu.set_flag(Flag::N, false);
-      cpu.set_address8(destination, val_next)
+      cpu.set_reg8(Reg::A, val_next)
     }
-    Operation::RotateRightA(copy_carry, destination) => {
-      let val = cpu.get_address8(destination)?;
+    Operation::RotateRightA(copy_carry) => {
+      let val = cpu.get_reg8(Reg::A)?;
       let mut val_next = val >> 1;
       if copy_carry {
         val_next |= (val & 1) << 7;
@@ -470,7 +470,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       cpu.set_flag(Flag::Z, false);
       cpu.set_flag(Flag::H, false);
       cpu.set_flag(Flag::N, false);
-      cpu.set_address8(destination, val_next)
+      cpu.set_reg8(Reg::A, val_next)
     }
     Operation::RotateLeft(copy_carry, destination) => {
       cpu.tick(1)?; // Tick for prefix

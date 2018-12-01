@@ -79,20 +79,23 @@ impl Assembler {
       Operation::SetCarry => {
         self.insert(0x37);
       }
-      Operation::RotateLeftA(true, _) => {
+      Operation::RotateLeftA(true) => {
         self.insert(0x07);
       }
-      Operation::RotateLeftA(false, _) => {
+      Operation::RotateLeftA(false) => {
         self.insert(0x17);
       }
-      Operation::RotateRightA(true, _) => {
+      Operation::RotateRightA(true) => {
         self.insert(0x0f);
       }
-      Operation::RotateRightA(false, _) => {
+      Operation::RotateRightA(false) => {
         self.insert(0x1f);
       }
       Operation::Return(Condition::Unconditional) => {
         self.insert(0xc9);
+      }
+      Operation::Return(condition) => {
+        self.insert(0xc0 | encode_condition(condition) << 3);
       }
       Operation::ReturnFromInterrupt => {
         self.insert(0xd9);
@@ -126,5 +129,15 @@ fn encode_reg(reg: Reg) -> u8 {
     Reg::HL => 0b110,
     Reg::A => 0b111,
     _ => panic!("Passed reg16 to reg8 encoding fn"),
+  }
+}
+
+fn encode_condition(condition: Condition) -> u8 {
+  match condition {
+    Condition::NonZero => 0b00,
+    Condition::Zero => 0b01,
+    Condition::NonCarry => 0b10,
+    Condition::Carry => 0b11,
+    Condition::Unconditional => panic!("Passed Unconditional to encode_condition"),
   }
 }
