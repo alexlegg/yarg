@@ -15,6 +15,7 @@ pub enum Statement {
 pub enum LabelOrAddress {
   AbsoluteLabel(String),
   RelativeLabel(String),
+  DataLabel(String),
   Resolved(Address),
 }
 
@@ -198,55 +199,55 @@ impl<'a> Parser<'a> {
       Symbol::Inc => {
         self.expect_word("inc")?;
         self.expect(Symbol::Operand)?;
-        let destination = self.match_operand()?;
+        let destination = self.match_data_operand()?;
         Ok(Operation::Increment(destination))
       }
       Symbol::Dec => {
         self.expect_word("dec")?;
         self.expect(Symbol::Operand)?;
-        let destination = self.match_operand()?;
+        let destination = self.match_data_operand()?;
         Ok(Operation::Decrement(destination))
       }
       Symbol::Sub => {
         self.expect_word("sub")?;
         self.expect(Symbol::Operand)?;
-        let source = self.match_operand()?;
+        let source = self.match_data_operand()?;
         Ok(Operation::Sub(source))
       }
       Symbol::And => {
         self.expect_word("and")?;
         self.expect(Symbol::Operand)?;
-        let source = self.match_operand()?;
+        let source = self.match_data_operand()?;
         Ok(Operation::And(source))
       }
       Symbol::Xor => {
         self.expect_word("xor")?;
         self.expect(Symbol::Operand)?;
-        let source = self.match_operand()?;
+        let source = self.match_data_operand()?;
         Ok(Operation::Xor(source))
       }
       Symbol::Or => {
         self.expect_word("or")?;
         self.expect(Symbol::Operand)?;
-        let source = self.match_operand()?;
+        let source = self.match_data_operand()?;
         Ok(Operation::Or(source))
       }
       Symbol::Cp => {
         self.expect_word("cp")?;
         self.expect(Symbol::Operand)?;
-        let source = self.match_operand()?;
+        let source = self.match_data_operand()?;
         Ok(Operation::Compare(source))
       }
       Symbol::Push => {
         self.expect_word("push")?;
         self.expect(Symbol::Operand)?;
-        let value = self.match_operand()?;
+        let value = self.match_data_operand()?;
         Ok(Operation::Push(value))
       }
       Symbol::Pop => {
         self.expect_word("pop")?;
         self.expect(Symbol::Operand)?;
-        let value = self.match_operand()?;
+        let value = self.match_data_operand()?;
         Ok(Operation::Pop(value))
       }
       Symbol::Ret => {
@@ -275,38 +276,49 @@ impl<'a> Parser<'a> {
       Symbol::Ld => {
         self.expect_word("ld")?;
         self.expect(Symbol::Operand)?;
-        let destination = self.match_operand()?;
+        let destination = self.match_data_operand()?;
         self.expect_token(Token::Comma)?;
         self.expect(Symbol::Operand)?;
-        let source = self.match_operand()?;
+        let source = self.match_data_operand()?;
         Ok(Operation::Load8(destination, source))
       }
       s => Err(format!("Expected instruction, got {:?}", s)),
     }
   }
 
-  fn match_operand(&mut self) -> Result<LabelOrAddress, String> {
-    self.match_operand_generic(|c| LabelOrAddress::Resolved(Address::Data8(c)))
+  fn match_data_operand(&mut self) -> Result<LabelOrAddress, String> {
+    self.match_operand(
+      |constant| LabelOrAddress::Resolved(Address::Data8(constant)),
+      |identifier| LabelOrAddress::DataLabel(identifier),
+    )
   }
 
   fn match_jr_operand(&mut self) -> Result<LabelOrAddress, String> {
-    self.match_operand_generic(|c| LabelOrAddress::Resolved(Address::Relative(c)))
+    self.match_operand(
+      |constant| LabelOrAddress::Resolved(Address::Relative(constant)),
+      |identifier| LabelOrAddress::RelativeLabel(identifier),
+    )
   }
 
-  // TODO Rename this and refactor
-  fn match_operand_generic<F>(&mut self, f: F) -> Result<LabelOrAddress, String>
+  fn match_operand<F, G>(&mut self, f: F, g: G) -> Result<LabelOrAddress, String>
   where
     F: FnOnce(u8) -> LabelOrAddress,
+    G: FnOnce(String) -> LabelOrAddress,
   {
     match self.next_symbol()? {
-      Symbol::Register => self
-        .match_register()
-        .map(|r| LabelOrAddress::Resolved(Address::Register(r))),
-      Symbol::Value => match self.next_symbol()? {
-        Symbol::Constant => self.match_constant().map(f),
-        Symbol::Identifier => Ok(LabelOrAddress::RelativeLabel(self.next_word()?)),
-        s => Err(format!("Expected Register or Value. Got {:?}", s)),
-      },
+      Symbol::Value => (),
+      Symbol::Register => {
+        return self
+          .match_register()
+          .map(|r| LabelOrAddress::Resolved(Address::Register(r)));
+      }
+      s => {
+        return Err(format!("Expected Register or Value. Got {:?}", s));
+      }
+    }
+    match self.next_symbol()? {
+      Symbol::Constant => self.match_constant().map(f),
+      Symbol::Identifier => self.next_word().map(g),
       s => Err(format!("Expected Register or Value. Got {:?}", s)),
     }
   }
