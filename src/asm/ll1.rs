@@ -68,9 +68,9 @@ lazy_static! {
       Or                  := [ word!("or") Operand ]
       Cp                  := [ word!("cp") Operand ]
       Ret                 := [ word!("ret") MaybeConditionOnly ]
-      Jr                  := [ word!("jr") MaybeCondition Constant ]
-      Jp                  := [ word!("jp") MaybeCondition Constant ]
-      Call                := [ word!("call") MaybeCondition Constant ]
+      Jr                  := [ word!("jr") MaybeCondition Value ]
+      Jp                  := [ word!("jp") MaybeCondition Value ]
+      Call                := [ word!("call") MaybeCondition Value ]
       Ld                  := [ word!("ld") Operand tkn!(Comma) Operand ]
       Ldh                 := [ word!("ldh") Operand tkn!(Comma) Operand ]
       Ldi                 := [ word!("ldi") Operand tkn!(Comma) Operand ]
@@ -80,7 +80,7 @@ lazy_static! {
       Sbc                 := [ word!("sbc") Operand tkn!(Comma) Operand ]
       Operand             := [ Register ]
                              [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
-                             [ Constant ]
+                             [ Value ]
       Instruction         := [ Nop ] [ Daa ] [ Cpl ] [ Ccf ] [ Scf ] [ Halt ]
                              [ Stop ] [ Ei ] [ Di ] [ Rlca ] [ Rla ] [ Rrca ]
                              [ Rra ] [ Reti ] [ Inc ] [ Dec ] [ Sub ] [ And ]
@@ -91,7 +91,9 @@ lazy_static! {
                              [ word!("d") ] [ word!("e") ] [ word!("f") ]
                              [ word!("af") ] [ word!("bc") ] [ word!("de") ]
                              [ word!("hl") ] [ word!("sp") ] [ word!("pc") ]
+      Value               := [ Constant ] [ Identifier ]
       Constant            := [ term!(Number) ]
+      Identifier          := [ term!(Alphanumeric) ]
       Condition           := [ word!("nz") ] [ word!("z") ]
                              [ word!("nc") ] [ word!("c") ]
       MaybeConditionOnly  := [ term!(Epsilon) ] [ Condition ]
@@ -110,7 +112,9 @@ pub enum Symbol {
   Operand,
   Instruction,
   Register,
+  Value,
   Constant,
+  Identifier,
   MaybeConditionOnly,
   MaybeCondition,
   Condition,
@@ -506,6 +510,7 @@ mod test {
         Jr,
         Terminal(Token(Word("jr".to_string()))),
         MaybeCondition,
+        Value,
         Constant,
         Terminal(Token(Word("123".to_string()))),
         Terminal(Token(Newline)),
@@ -536,6 +541,7 @@ mod test {
         Condition,
         Terminal(Token(Word("nz".to_string()))),
         Terminal(Token(Comma)),
+        Value,
         Constant,
         Terminal(Token(Word("123".to_string()))),
         Terminal(Token(Newline)),
@@ -598,8 +604,31 @@ mod test {
         Terminal(Token(Word("a".to_string()))),
         Terminal(Token(Comma)),
         Operand,
+        Value,
         Constant,
         Terminal(Token(Word("10".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn identifier() {
+    let tokens = vec![Word("jp".to_string()), Word("abcd".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Jp,
+        Terminal(Token(Word("jp".to_string()))),
+        MaybeCondition,
+        Value,
+        Identifier,
+        Terminal(Token(Word("abcd".to_string()))),
         Terminal(Token(Newline)),
         Program,
       ])

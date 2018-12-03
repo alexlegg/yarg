@@ -1,24 +1,16 @@
 use cartridge::Header;
 use operation::{Address, Condition, Operation, Reg};
-use parser::{LazyAddress, Statement};
+use parser::{LabelOrAddress, Statement};
+use std::collections::HashMap;
 
 struct Assembler {
   data: Vec<u8>,
   cur: usize,
+  labels: HashMap<String, usize>,
 }
 
 pub fn assemble(statements: Vec<Statement>) -> Result<Vec<u8>, String> {
-  let mut assembler = Assembler::new();
-  for statement in statements {
-    match statement {
-      Statement::Instruction(op) => {
-        assembler.encode_operation(op.clone())?;
-      }
-      Statement::Label(_) => return Err("Label!?".to_string()),
-      Statement::Directive(_, _) => return Err("Directive!?".to_string()),
-    }
-  }
-  assembler.encode()
+  Assembler::new().assemble(statements)?.encode()
 }
 
 impl Assembler {
@@ -26,7 +18,25 @@ impl Assembler {
     Assembler {
       data: vec![0; 0x7fff],
       cur: 0x150,
+      labels: HashMap::new(),
     }
+  }
+
+  fn assemble(mut self, statements: Vec<Statement>) -> Result<Assembler, String> {
+    for statement in statements {
+      match statement {
+        Statement::Instruction(op) => {
+          self.encode_operation(&op)?;
+        }
+        Statement::Label(s) => {
+          self.labels.insert(s, self.cur);
+        }
+        Statement::Directive(_, _) => {
+          return Err("Directive!?".to_string());
+        }
+      }
+    }
+    Ok(self)
   }
 
   fn encode(mut self) -> Result<Vec<u8>, String> {
@@ -35,7 +45,7 @@ impl Assembler {
       .title
       .copy_from_slice("test rom\0\0\0\0\0\0\0\0".as_bytes());
     header.set_header_checksum();
-    self.data.splice(0x100..0x14d, header.serialise());
+    self.data.splice(0x100..0x14e, header.serialise());
     let mut checksum: u16 = 0;
     for byte in &self.data {
       checksum = checksum.wrapping_add(*byte as u16);
@@ -50,7 +60,11 @@ impl Assembler {
     self.cur += 1;
   }
 
-  fn encode_operation(&mut self, operation: Operation<LazyAddress>) -> Result<(), String> {
+  fn find_label(&self, label: &str) -> Option<usize> {
+    self.labels.get(label).cloned()
+  }
+
+  fn encode_operation(&mut self, operation: &Operation<LabelOrAddress>) -> Result<(), String> {
     match operation {
       Operation::Nop => {
         self.insert(0x00);
@@ -76,6 +90,24 @@ impl Assembler {
       Operation::ComplementCarry => {
         self.insert(0x3f);
       }
+      Operation::Jump(Condition::Unconditional, LabelOrAddress::RelativeLabel(s)) => {
+        self.insert(0x18);
+        let pc = self.cur as isize;
+        match self.find_label(&s) {
+          Some(addr) => {
+            let rel = (addr as isize)
+              .checked_sub(pc + 1)
+              .ok_or("Bad relative jump".to_string())?;
+            if rel < i8::min_value() as isize || rel > i8::max_value() as isize {
+              return Err("Bad relative jump".to_string());
+            }
+            self.insert(rel as u8);
+          }
+          None => {
+            return Err("Not implemented".to_string());
+          }
+        }
+      }
       Operation::SetCarry => {
         self.insert(0x37);
       }
@@ -95,26 +127,26 @@ impl Assembler {
         self.insert(0xc9);
       }
       Operation::Return(condition) => {
-        self.insert(0xc0 | encode_condition(condition) << 3);
+        self.insert(0xc0 | encode_condition(*condition) << 3);
       }
       Operation::ReturnFromInterrupt => {
         self.insert(0xd9);
       }
       Operation::Load8(
-        LazyAddress::Resolved(Address::Register(dest)),
-        LazyAddress::Resolved(Address::Register(source)),
+        LabelOrAddress::Resolved(Address::Register(dest)),
+        LabelOrAddress::Resolved(Address::Register(source)),
       ) => {
-        self.insert(0x40 | (encode_reg(dest) << 3) | (encode_reg(source)));
+        self.insert(0x40 | (encode_reg(*dest) << 3) | (encode_reg(*source)));
       }
       Operation::Load8(
-        LazyAddress::Resolved(Address::Register(dest)),
-        LazyAddress::Resolved(Address::Data8(val)),
+        LabelOrAddress::Resolved(Address::Register(dest)),
+        LabelOrAddress::Resolved(Address::Data8(val)),
       ) => {
-        self.insert(0x06 | (encode_reg(dest) << 3));
-        self.insert(val);
+        self.insert(0x06 | (encode_reg(*dest) << 3));
+        self.insert(*val);
       }
-      Operation::Decrement(LazyAddress::Resolved(Address::Register(r))) => {
-        self.insert(0x05 | (encode_reg(r) << 3));
+      Operation::Decrement(LabelOrAddress::Resolved(Address::Register(r))) => {
+        self.insert(0x05 | (encode_reg(*r) << 3));
       }
       _ => {
         return Err(format!("Unrecognised operation {:?}", operation));
@@ -145,5 +177,59 @@ fn encode_condition(condition: Condition) -> u8 {
     Condition::NonCarry => 0b10,
     Condition::Carry => 0b11,
     Condition::Unconditional => panic!("Passed Unconditional to encode_condition"),
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use operation::Address::*;
+  use operation::Condition::*;
+  use operation::Operation::*;
+  use operation::Reg;
+  use parser::LabelOrAddress::*;
+  use parser::Statement::*;
+
+  #[test]
+  fn zero_opcodes() {
+    let instructions = vec![Instruction(Stop)];
+    let result = super::assemble(instructions);
+    assert!(result.is_ok());
+    let rom = result.unwrap();
+    assert_eq!(rom[0x150], 0x10);
+  }
+
+  #[test]
+  fn register_opcode() {
+    let instructions = vec![Instruction(Decrement(Resolved(Register(Reg::C))))];
+    let result = super::assemble(instructions);
+    assert!(result.is_ok());
+    let rom = result.unwrap();
+    assert_eq!(rom[0x150], 0x0d);
+  }
+
+  #[test]
+  fn condition() {
+    let instructions = vec![Instruction(Return(Zero))];
+    let result = super::assemble(instructions);
+    assert!(result.is_ok());
+    let rom = result.unwrap();
+    assert_eq!(rom[0x150], 0xc8);
+  }
+
+  #[test]
+  fn jump_backwards_relative() {
+    let instructions = vec![
+      Label("abcd".to_string()),
+      Instruction(Stop),
+      Instruction(Stop),
+      Instruction(Jump(Unconditional, RelativeLabel("abcd".to_string()))),
+    ];
+    let result = super::assemble(instructions);
+    assert!(result.is_ok());
+    let rom = result.unwrap();
+    assert_eq!(rom[0x150], 0x10);
+    assert_eq!(rom[0x151], 0x10);
+    assert_eq!(rom[0x152], 0x18);
+    assert_eq!(rom[0x153], (-4 as i8) as u8);
   }
 }

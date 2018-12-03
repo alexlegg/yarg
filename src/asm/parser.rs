@@ -8,12 +8,13 @@ use std::str::Chars;
 pub enum Statement {
   Directive(String, String),
   Label(String),
-  Instruction(Operation<LazyAddress>),
+  Instruction(Operation<LabelOrAddress>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LazyAddress {
-  Unresolved(String),
+pub enum LabelOrAddress {
+  AbsoluteLabel(String),
+  RelativeLabel(String),
   Resolved(Address),
 }
 
@@ -136,7 +137,7 @@ impl<'a> Parser<'a> {
     Ok((name, value))
   }
 
-  fn match_instruction(&mut self) -> Result<Operation<LazyAddress>, String> {
+  fn match_instruction(&mut self) -> Result<Operation<LabelOrAddress>, String> {
     match self.next_symbol()? {
       Symbol::Nop => {
         self.expect_word("nop")?;
@@ -264,16 +265,10 @@ impl<'a> Parser<'a> {
         if self.maybe_expect(Symbol::Condition)? {
           let condition = self.match_condition()?;
           self.expect_token(Token::Comma)?;
-          self.expect(Symbol::Constant)?;
-          let source = self
-            .match_constant()
-            .map(|c| LazyAddress::Resolved(Address::Relative(c)))?;
+          let source = self.match_jr_operand()?;
           Ok(Operation::Jump(condition, source))
         } else {
-          self.expect(Symbol::Constant)?;
-          let source = self
-            .match_constant()
-            .map(|c| LazyAddress::Resolved(Address::Relative(c)))?;
+          let source = self.match_jr_operand()?;
           Ok(Operation::Jump(Condition::Unconditional, source))
         }
       }
@@ -290,16 +285,40 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn match_operand(&mut self) -> Result<LazyAddress, String> {
+  fn match_operand(&mut self) -> Result<LabelOrAddress, String> {
+    self.match_operand_generic(|c| LabelOrAddress::Resolved(Address::Data8(c)))
+  }
+
+  fn match_jr_operand(&mut self) -> Result<LabelOrAddress, String> {
+    self.match_operand_generic(|c| LabelOrAddress::Resolved(Address::Relative(c)))
+  }
+
+  // TODO Rename this and refactor
+  fn match_operand_generic<F>(&mut self, f: F) -> Result<LabelOrAddress, String>
+  where
+    F: FnOnce(u8) -> LabelOrAddress,
+  {
     match self.next_symbol()? {
       Symbol::Register => self
         .match_register()
-        .map(|r| LazyAddress::Resolved(Address::Register(r))),
-      Symbol::Constant => self
-        .match_constant()
-        .map(|c| LazyAddress::Resolved(Address::Data8(c))),
-      s @ _ => Err(format!("Expected Register, or Constant. Got {:?}", s)),
+        .map(|r| LabelOrAddress::Resolved(Address::Register(r))),
+      Symbol::Value => match self.next_symbol()? {
+        Symbol::Constant => self.match_constant().map(f),
+        Symbol::Identifier => Ok(LabelOrAddress::RelativeLabel(self.next_word()?)),
+        s => Err(format!("Expected Register or Value. Got {:?}", s)),
+      },
+      s => Err(format!("Expected Register or Value. Got {:?}", s)),
     }
+  }
+
+  fn match_constant<T>(&mut self) -> Result<T, String>
+  where
+    T: std::str::FromStr,
+  {
+    self
+      .next_word()?
+      .parse::<T>()
+      .map_err(|e| format!("Failed to parse constant"))
   }
 
   fn match_register(&mut self) -> Result<Reg, String> {
@@ -319,13 +338,6 @@ impl<'a> Parser<'a> {
       "pc" => Ok(Reg::PC),
       s @ _ => Err(format!("Expected register, got {:?}", s)),
     }
-  }
-
-  fn match_constant(&mut self) -> Result<u8, String> {
-    self
-      .next_word()?
-      .parse::<u8>()
-      .map_err(|e| format!("Failed to parse number: {:?}", e))
   }
 
   fn match_condition(&mut self) -> Result<Condition, String> {
@@ -357,7 +369,7 @@ impl<'a> Iterator for Parser<'a> {
 
 #[cfg(test)]
 mod test {
-  use super::LazyAddress::*;
+  use super::LabelOrAddress::*;
   use super::*;
   use operation::Address::*;
   use operation::Operation::*;
@@ -429,6 +441,19 @@ mod test {
         Resolved(Register(Reg::A)),
         Resolved(Data8(10))
       ))])
+    );
+  }
+
+  #[test]
+  fn relative_label() {
+    let input = "jr nz, abcd\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![Instruction(Jump(
+        Condition::NonZero,
+        RelativeLabel("abcd".to_string())
+      )),])
     );
   }
 
