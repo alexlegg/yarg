@@ -1,6 +1,6 @@
-use crate::cartridge::Header;
-use crate::operation::{Address, Condition, Operation, Reg};
-use crate::parser::{LabelOrAddress, Statement};
+use crate::asm::cartridge::Header;
+use crate::asm::operation::{Address, Condition, Operation, Reg};
+use crate::asm::parser::{LabelOrAddress, Statement};
 use std::collections::HashMap;
 
 type AddrEncodingFn = Fn(usize, &mut Vec<u8>) -> Result<(), String>;
@@ -212,12 +212,12 @@ fn encode_relative_addr(jump_addr: usize, addr: usize, data: &mut Vec<u8>) -> Re
 
 #[cfg(test)]
 mod test {
-  use crate::operation::Address::*;
-  use crate::operation::Condition::*;
-  use crate::operation::Operation::*;
-  use crate::operation::Reg;
-  use crate::parser::LabelOrAddress::*;
-  use crate::parser::Statement::*;
+  use crate::asm::operation::Address::*;
+  use crate::asm::operation::Condition::*;
+  use crate::asm::operation::Operation::*;
+  use crate::asm::operation::Reg;
+  use crate::asm::parser::LabelOrAddress::*;
+  use crate::asm::parser::Statement::*;
 
   #[test]
   fn zero_opcodes() {

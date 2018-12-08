@@ -1,6 +1,6 @@
-use crate::lexer::{Lexer, Token};
-use crate::ll1::{Ll1Parser, Symbol, Terminal};
-use crate::operation::{Address, Condition, Operation, Reg};
+use crate::asm::lexer::{Lexer, Token};
+use crate::asm::ll1::{Ll1Parser, Symbol, Terminal};
+use crate::asm::operation::{Address, Condition, Operation, Reg};
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -497,9 +497,9 @@ impl<'a> Iterator for Parser<'a> {
 mod test {
   use super::LabelOrAddress::*;
   use super::*;
-  use crate::operation::Address::*;
-  use crate::operation::Operation::*;
-  use crate::parser::Statement::*;
+  use crate::asm::operation::Address::*;
+  use crate::asm::operation::Operation::*;
+  use crate::asm::parser::Statement::*;
 
   #[test]
   fn zero_operands() {

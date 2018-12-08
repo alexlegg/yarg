@@ -1,14 +1,5 @@
-mod assembler;
-mod cartridge;
-mod lexer;
-mod ll1;
-mod operation;
-mod parser;
-
-#[macro_use]
-extern crate lazy_static;
-
-use crate::parser::Parser;
+use yarg::asm::assembler;
+use yarg::asm::parser::Parser;
 use std::env;
 use std::fs;
 use std::io::Write;

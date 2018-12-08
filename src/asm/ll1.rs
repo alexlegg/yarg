@@ -1,4 +1,5 @@
-use crate::lexer::Token;
+use crate::asm::lexer::Token;
+use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::iter::Peekable;
@@ -31,9 +32,9 @@ macro_rules! grammar {
 
 lazy_static! {
   static ref PARSE_TABLE: HashMap<Symbol, HashMap<Terminal, Vec<Symbol>>> = {
-    use crate::lexer::Token::*;
-    use crate::ll1::Symbol::*;
-    use crate::ll1::Terminal::*;
+    use crate::asm::lexer::Token::*;
+    use crate::asm::ll1::Symbol::*;
+    use crate::asm::ll1::Terminal::*;
     grammar!(
       Program             := [ term!(Epsilon) ]
                              [ Statement tkn!(Newline) Program ]
@@ -476,9 +477,9 @@ impl Symbol {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::lexer::Token::*;
-  use crate::ll1::Symbol::*;
-  use crate::ll1::Terminal::*;
+  use crate::asm::lexer::Token::*;
+  use crate::asm::ll1::Symbol::*;
+  use crate::asm::ll1::Terminal::*;
 
   #[test]
   fn zero_operands() {
