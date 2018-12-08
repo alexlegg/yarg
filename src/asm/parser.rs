@@ -1,6 +1,6 @@
-use lexer::{Lexer, Token};
-use ll1::{Ll1Parser, Symbol, Terminal};
-use operation::{Address, Condition, Operation, Reg};
+use crate::lexer::{Lexer, Token};
+use crate::ll1::{Ll1Parser, Symbol, Terminal};
+use crate::operation::{Address, Condition, Operation, Reg};
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -444,7 +444,7 @@ impl<'a> Parser<'a> {
     self
       .next_word()?
       .parse::<T>()
-      .map_err(|e| format!("Failed to parse constant"))
+      .map_err(|_e| format!("Failed to parse constant"))
   }
 
   fn match_register(&mut self) -> Result<Reg, String> {
@@ -497,9 +497,9 @@ impl<'a> Iterator for Parser<'a> {
 mod test {
   use super::LabelOrAddress::*;
   use super::*;
-  use operation::Address::*;
-  use operation::Operation::*;
-  use parser::Statement::*;
+  use crate::operation::Address::*;
+  use crate::operation::Operation::*;
+  use crate::parser::Statement::*;
 
   #[test]
   fn zero_operands() {

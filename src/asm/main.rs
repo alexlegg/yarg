@@ -8,7 +8,7 @@ mod parser;
 #[macro_use]
 extern crate lazy_static;
 
-use parser::Parser;
+use crate::parser::Parser;
 use std::env;
 use std::fs;
 use std::io::Write;

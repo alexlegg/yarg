@@ -1,8 +1,8 @@
-use asm::operation::{Address, Condition, Operation, Reg};
-use cpu::Cpu;
-use cpu::Flag;
-use decode;
-use joypad::JoypadInput;
+use crate::asm::operation::{Address, Condition, Operation, Reg};
+use crate::cpu::Cpu;
+use crate::cpu::Flag;
+use crate::decode;
+use crate::joypad::JoypadInput;
 use std::collections::VecDeque;
 use std::fs;
 

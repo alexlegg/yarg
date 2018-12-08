@@ -1,4 +1,4 @@
-use cpu::{Interrupt, TrapHandler};
+use crate::cpu::{Interrupt, TrapHandler};
 
 #[derive(Copy, Clone, Debug)]
 pub struct JoypadInput {

@@ -2,6 +2,7 @@
 name = "yarg"
 version = "0.1.0"
 authors = ["Alex Legg <alex@legg.info>"]
+edition = "2018"
 
 [[bin]]
 name = "yarg"

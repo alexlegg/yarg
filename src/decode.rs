@@ -1,5 +1,5 @@
-use asm::operation::{Address, Condition, Operation, Reg};
-use util::bits;
+use crate::asm::operation::{Address, Condition, Operation, Reg};
+use crate::util::bits;
 
 fn opcode_reg(opcode: u8) -> Address {
   match opcode & 0b00000111 {

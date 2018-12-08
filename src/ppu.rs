@@ -1,6 +1,6 @@
-use cpu::Interrupt;
-use cpu::TrapHandler;
-use util::bit_mask;
+use crate::cpu::Interrupt;
+use crate::cpu::TrapHandler;
+use crate::util::bit_mask;
 
 const SCREEN_WIDTH: u64 = 160;
 const SCREEN_HEIGHT: u64 = 144;

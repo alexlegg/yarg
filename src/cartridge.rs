@@ -1,5 +1,5 @@
-use cpu::Interrupt;
-use cpu::TrapHandler;
+use crate::cpu::Interrupt;
+use crate::cpu::TrapHandler;
 
 pub struct Cartridge {
   rom: Vec<u8>,

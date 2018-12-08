@@ -1,5 +1,5 @@
-use cpu::Interrupt;
-use cpu::TrapHandler;
+use crate::cpu::Interrupt;
+use crate::cpu::TrapHandler;
 
 const CTRL_FREQ: u8 = 0b11;
 const CTRL_ENABLE: u8 = 0b1 << 2;

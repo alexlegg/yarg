@@ -9,7 +9,7 @@ mod sdl;
 mod timer;
 mod util;
 
-use emulator::Emulator;
+use crate::emulator::Emulator;
 use std::env;
 use std::io;
 use std::io::Write;

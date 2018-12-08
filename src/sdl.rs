@@ -5,11 +5,11 @@ use self::sdl2::keyboard::Keycode;
 use self::sdl2::pixels::Color;
 use self::sdl2::pixels::PixelFormatEnum;
 use self::sdl2::rect::Rect;
-use joypad::JoypadInput;
+use crate::joypad::JoypadInput;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use emulator::Emulator;
+use crate::emulator::Emulator;
 
 pub fn init(emu: &mut Emulator, show_vram: bool) {
   let sdl_context = sdl2::init().unwrap();

@@ -1,8 +1,8 @@
-use asm::operation::{Address, Condition, Reg};
-use cartridge::Cartridge;
-use joypad::Joypad;
-use ppu::Ppu;
-use timer::Timer;
+use crate::asm::operation::{Address, Condition, Reg};
+use crate::cartridge::Cartridge;
+use crate::joypad::Joypad;
+use crate::ppu::Ppu;
+use crate::timer::Timer;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Flag {
