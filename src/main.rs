@@ -1,11 +1,13 @@
 use std::env;
+use std::fs;
 use std::io;
 use std::io::Write;
 use yarg::emulator::Emulator;
 use yarg::sdl;
 
-fn debugger_cli(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<(), String> {
-  let mut emu = Emulator::new(bootrom_fn, rom_fn)?;
+fn debugger_cli(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Result<(), String> {
+  // TODO: Add reset logic to Emulator so I don't need to clone here.
+  let mut emu = Emulator::new(bootrom.clone(), rom.clone())?;
   loop {
     print!("> ");
     let _ = io::stdout().flush();
@@ -29,7 +31,7 @@ fn debugger_cli(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<(), String> {
             sdl::init(&mut emu, false);
           }
           Some("reset") | Some("e") => {
-            emu = Emulator::new(bootrom_fn, rom_fn)?;
+            emu = Emulator::new(bootrom.clone(), rom.clone())?;
           }
           Some("quit") | Some("q") => break,
           _ => println!("Unrecognised command"),
@@ -44,7 +46,7 @@ fn debugger_cli(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<(), String> {
   Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), String> {
   let args: Vec<String> = env::args().collect();
   let mut show_vram: bool = false;
   let mut use_bootrom: bool = false;
@@ -65,22 +67,23 @@ fn main() {
     }
   }
   if args_processed == args.len() {
-    println!("Must specify ROM");
-    return;
+    return Err("Must specify ROM file".to_string());
   }
-  let bootrom_fn = if use_bootrom {
-    Some("roms/bootrom.gb")
+
+  let bootrom = if use_bootrom {
+    Some(fs::read("rom/bootrom.gb").map_err(|_| "Could not read bootrom file".to_string())?)
   } else {
     None
   };
-  if let Some(rom_fn) = args.last() {
-    if debugger {
-      match debugger_cli(bootrom_fn, rom_fn) {
-        Err(s) => println!("{:?}", s),
-        _ => (),
-      }
-    } else if let Ok(mut emu) = Emulator::new(bootrom_fn, rom_fn) {
-      sdl::init(&mut emu, show_vram);
-    }
+  let rom_fn = args.last().ok_or("Must specify ROM file".to_string())?;
+
+  let rom = fs::read(rom_fn).map_err(|_| "Could not read ROM file".to_string())?;
+
+  if debugger {
+    return debugger_cli(bootrom, rom);
   }
+
+  let mut emu = Emulator::new(bootrom, rom)?;
+  sdl::init(&mut emu, show_vram);
+  Ok(())
 }

@@ -4,7 +4,6 @@ use crate::cpu::Flag;
 use crate::decode;
 use crate::joypad::JoypadInput;
 use std::collections::VecDeque;
-use std::fs;
 
 const DEBUG_STREAM_SIZE: usize = 15;
 
@@ -16,9 +15,7 @@ pub struct Emulator {
 }
 
 impl Emulator {
-  pub fn new(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<Emulator, String> {
-    let bootrom = bootrom_fn.map(|f| fs::read(f).unwrap());
-    let rom: Vec<u8> = fs::read(rom_fn).unwrap();
+  pub fn new(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Result<Emulator, String> {
     let cpu = Cpu::new(bootrom, rom);
     let mut emu = Emulator {
       instruction_stream: VecDeque::with_capacity(DEBUG_STREAM_SIZE),

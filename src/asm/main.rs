@@ -1,16 +1,14 @@
-use yarg::asm::assembler;
-use yarg::asm::parser::Parser;
 use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use yarg::asm::assembler;
+use yarg::asm::parser::Parser;
 
 fn main() -> Result<(), String> {
   let args: Vec<String> = env::args().collect();
-  if args.len() != 2 {
-    println!("Must specify input file")
-  }
-  let path = Path::new(args.last().unwrap());
+  let filename = args.last().ok_or("Must specify input file".to_string())?;
+  let path = Path::new(filename);
   let input = fs::read_to_string(path)
     .map_err(|e| format!("Error reading {}: {}", path.to_str().unwrap(), e))?;
   let parser = Parser::new(input.chars());
