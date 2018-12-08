@@ -140,79 +140,18 @@ impl<'a> Parser<'a> {
 
   fn match_instruction(&mut self) -> Result<Operation<LabelOrAddress>, String> {
     match self.next_symbol()? {
-      Symbol::Nop => {
-        self.expect_word("nop")?;
-        Ok(Operation::Nop)
-      }
-      Symbol::Daa => {
-        self.expect_word("daa")?;
-        Ok(Operation::DecimalAdjustAccumulator)
-      }
-      Symbol::Cpl => {
-        self.expect_word("cpl")?;
-        Ok(Operation::Complement)
-      }
-      Symbol::Ccf => {
-        self.expect_word("ccf")?;
-        Ok(Operation::ComplementCarry)
-      }
-      Symbol::Scf => {
-        self.expect_word("scf")?;
-        Ok(Operation::SetCarry)
-      }
-      Symbol::Halt => {
-        self.expect_word("halt")?;
-        Ok(Operation::Halt)
-      }
-      Symbol::Stop => {
-        self.expect_word("stop")?;
-        Ok(Operation::Stop)
-      }
-      Symbol::Ei => {
-        self.expect_word("ei")?;
-        Ok(Operation::EnableInterrupts)
-      }
-      Symbol::Di => {
-        self.expect_word("di")?;
-        Ok(Operation::DisableInterrupts)
-      }
-      Symbol::Rlca => {
-        self.expect_word("rlca")?;
-        Ok(Operation::RotateLeftA(true))
-      }
-      Symbol::Rla => {
-        self.expect_word("rla")?;
-        Ok(Operation::RotateLeftA(false))
-      }
-      Symbol::Rrca => {
-        self.expect_word("rrca")?;
-        Ok(Operation::RotateRightA(true))
-      }
-      Symbol::Rra => {
-        self.expect_word("rra")?;
-        Ok(Operation::RotateRightA(false))
-      }
-      Symbol::Reti => {
-        self.expect_word("reti")?;
-        Ok(Operation::ReturnFromInterrupt)
-      }
-      Symbol::Inc => {
-        self.expect_word("inc")?;
-        self.expect(Symbol::Operand)?;
-        let destination = self.match_data_operand()?;
-        Ok(Operation::Increment(destination))
-      }
-      Symbol::Dec => {
-        self.expect_word("dec")?;
-        self.expect(Symbol::Operand)?;
-        let destination = self.match_data_operand()?;
-        Ok(Operation::Decrement(destination))
-      }
-      Symbol::Sub => {
-        self.expect_word("sub")?;
+      // Arithmetic and logic
+      Symbol::Adc => {
+        self.expect_word("adc")?;
         self.expect(Symbol::Operand)?;
         let source = self.match_data_operand()?;
-        Ok(Operation::Sub(source))
+        Ok(Operation::And(source))
+      }
+      Symbol::Add => {
+        self.expect_word("add")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::And(source))
       }
       Symbol::And => {
         self.expect_word("and")?;
@@ -220,11 +159,23 @@ impl<'a> Parser<'a> {
         let source = self.match_data_operand()?;
         Ok(Operation::And(source))
       }
-      Symbol::Xor => {
-        self.expect_word("xor")?;
+      Symbol::Cp => {
+        self.expect_word("cp")?;
         self.expect(Symbol::Operand)?;
         let source = self.match_data_operand()?;
-        Ok(Operation::Xor(source))
+        Ok(Operation::Compare(source))
+      }
+      Symbol::Dec => {
+        self.expect_word("dec")?;
+        self.expect(Symbol::Operand)?;
+        let destination = self.match_data_operand()?;
+        Ok(Operation::Decrement(destination))
+      }
+      Symbol::Inc => {
+        self.expect_word("inc")?;
+        self.expect(Symbol::Operand)?;
+        let destination = self.match_data_operand()?;
+        Ok(Operation::Increment(destination))
       }
       Symbol::Or => {
         self.expect_word("or")?;
@@ -232,34 +183,134 @@ impl<'a> Parser<'a> {
         let source = self.match_data_operand()?;
         Ok(Operation::Or(source))
       }
-      Symbol::Cp => {
-        self.expect_word("cp")?;
+      Symbol::Sbc => {
+        self.expect_word("sbc")?;
         self.expect(Symbol::Operand)?;
         let source = self.match_data_operand()?;
-        Ok(Operation::Compare(source))
+        Ok(Operation::Or(source))
       }
-      Symbol::Push => {
-        self.expect_word("push")?;
+      Symbol::Sub => {
+        self.expect_word("sub")?;
         self.expect(Symbol::Operand)?;
-        let value = self.match_data_operand()?;
-        Ok(Operation::Push(value))
+        let source = self.match_data_operand()?;
+        Ok(Operation::Sub(source))
       }
-      Symbol::Pop => {
-        self.expect_word("pop")?;
+      Symbol::Xor => {
+        self.expect_word("xor")?;
         self.expect(Symbol::Operand)?;
-        let value = self.match_data_operand()?;
-        Ok(Operation::Pop(value))
+        let source = self.match_data_operand()?;
+        Ok(Operation::Xor(source))
       }
-      Symbol::Ret => {
-        self.expect_word("ret")?;
-        self.expect(Symbol::MaybeConditionOnly)?;
-        if self.maybe_expect(Symbol::Condition)? {
-          let condition = self.match_condition()?;
-          Ok(Operation::Return(condition))
-        } else {
-          Ok(Operation::Return(Condition::Unconditional))
-        }
+
+      // Bit operations
+      Symbol::Bit => {
+        self.expect_word("bit")?;
+        let bit = self.match_constant()?;
+        self.expect_token(Token::Comma)?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::Bit(bit, source))
       }
+      Symbol::Res => {
+        self.expect_word("res")?;
+        let bit = self.match_constant()?;
+        self.expect_token(Token::Comma)?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::ResetBit(bit, source))
+      }
+      Symbol::Set => {
+        self.expect_word("set")?;
+        let bit = self.match_constant()?;
+        self.expect_token(Token::Comma)?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::SetBit(bit, source))
+      }
+      Symbol::Swap => {
+        self.expect_word("swap")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::Swap(source))
+      }
+
+      // Shift and rotate operations
+      Symbol::Rl => {
+        self.expect_word("rl")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::RotateLeft(false, source))
+      }
+      Symbol::Rla => {
+        self.expect_word("rla")?;
+        Ok(Operation::RotateLeftA(false))
+      }
+      Symbol::Rlc => {
+        self.expect_word("rlc")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::RotateLeft(true, source))
+      }
+      Symbol::Rlca => {
+        self.expect_word("rlca")?;
+        Ok(Operation::RotateLeftA(true))
+      }
+      Symbol::Rr => {
+        self.expect_word("rr")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::RotateRight(false, source))
+      }
+      Symbol::Rra => {
+        self.expect_word("rra")?;
+        Ok(Operation::RotateRightA(false))
+      }
+      Symbol::Rrc => {
+        self.expect_word("rrc")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::RotateRight(true, source))
+      }
+      Symbol::Rrca => {
+        self.expect_word("rrca")?;
+        Ok(Operation::RotateRightA(true))
+      }
+      Symbol::Sla => {
+        self.expect_word("sla")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::ShiftLeft(source))
+      }
+      Symbol::Sra => {
+        self.expect_word("sra")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::ShiftRight(source))
+      }
+      Symbol::Srl => {
+        self.expect_word("srl")?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::ShiftRightLogical(source))
+      }
+
+      // Load operations
+      Symbol::Ld => {
+        self.expect_word("ld")?;
+        self.expect(Symbol::Operand)?;
+        let destination = self.match_data_operand()?;
+        self.expect_token(Token::Comma)?;
+        self.expect(Symbol::Operand)?;
+        let source = self.match_data_operand()?;
+        Ok(Operation::Load8(destination, source))
+      }
+      Symbol::Ldh => Err("Not implemented".to_string()),
+      Symbol::Ldi => Err("Not implemented".to_string()),
+      Symbol::Ldd => Err("Not implemented".to_string()),
+
+      // Jump and call operations
+      Symbol::Call => Err("Not implemented".to_string()),
+      Symbol::Jp => Err("Not implemented".to_string()),
       Symbol::Jr => {
         self.expect_word("jr")?;
         self.expect(Symbol::MaybeCondition)?;
@@ -273,15 +324,78 @@ impl<'a> Parser<'a> {
           Ok(Operation::Jump(Condition::Unconditional, source))
         }
       }
-      Symbol::Ld => {
-        self.expect_word("ld")?;
-        self.expect(Symbol::Operand)?;
-        let destination = self.match_data_operand()?;
-        self.expect_token(Token::Comma)?;
-        self.expect(Symbol::Operand)?;
-        let source = self.match_data_operand()?;
-        Ok(Operation::Load8(destination, source))
+      Symbol::Ret => {
+        self.expect_word("ret")?;
+        self.expect(Symbol::MaybeConditionOnly)?;
+        if self.maybe_expect(Symbol::Condition)? {
+          let condition = self.match_condition()?;
+          Ok(Operation::Return(condition))
+        } else {
+          Ok(Operation::Return(Condition::Unconditional))
+        }
       }
+      Symbol::Reti => {
+        self.expect_word("reti")?;
+        Ok(Operation::ReturnFromInterrupt)
+      }
+      Symbol::Rst => {
+        self.expect_word("rst")?;
+        let destination = self.match_constant()?;
+        Ok(Operation::Reset(destination))
+      }
+
+      // Stack operations
+      Symbol::Pop => {
+        self.expect_word("pop")?;
+        self.expect(Symbol::Operand)?;
+        let value = self.match_data_operand()?;
+        Ok(Operation::Pop(value))
+      }
+      Symbol::Push => {
+        self.expect_word("push")?;
+        self.expect(Symbol::Operand)?;
+        let value = self.match_data_operand()?;
+        Ok(Operation::Push(value))
+      }
+
+      // Misc operations
+      Symbol::Ccf => {
+        self.expect_word("ccf")?;
+        Ok(Operation::ComplementCarry)
+      }
+      Symbol::Cpl => {
+        self.expect_word("cpl")?;
+        Ok(Operation::Complement)
+      }
+      Symbol::Daa => {
+        self.expect_word("daa")?;
+        Ok(Operation::DecimalAdjustAccumulator)
+      }
+      Symbol::Di => {
+        self.expect_word("di")?;
+        Ok(Operation::DisableInterrupts)
+      }
+      Symbol::Ei => {
+        self.expect_word("ei")?;
+        Ok(Operation::EnableInterrupts)
+      }
+      Symbol::Halt => {
+        self.expect_word("halt")?;
+        Ok(Operation::Halt)
+      }
+      Symbol::Nop => {
+        self.expect_word("nop")?;
+        Ok(Operation::Nop)
+      }
+      Symbol::Scf => {
+        self.expect_word("scf")?;
+        Ok(Operation::SetCarry)
+      }
+      Symbol::Stop => {
+        self.expect_word("stop")?;
+        Ok(Operation::Stop)
+      }
+
       s => Err(format!("Expected instruction, got {:?}", s)),
     }
   }
@@ -414,6 +528,23 @@ mod test {
         Resolved(Register(Reg::A)),
         Resolved(Register(Reg::B))
       ))])
+    );
+  }
+
+  #[test]
+  fn number() {
+    let input = "rst 8\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(parser.parse(), Ok(vec![Instruction(Reset(8))]));
+  }
+
+  #[test]
+  fn number_and_operand() {
+    let input = "bit 3, c\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![Instruction(Bit(3, Resolved(Register(Reg::C))))])
     );
   }
 

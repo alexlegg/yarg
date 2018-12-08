@@ -40,53 +40,13 @@ lazy_static! {
       Statement           := [ Label MaybeInstruction ]
                              [ Instruction ]
                              [ Directive ]
-      MaybeInstruction    := [ term!(Epsilon) ]
-                             [ Instruction ]
       Directive           := [ tkn!(Dot) word!("bank") term!(Alphanumeric) ]
       Label               := [ term!(Alphanumeric) tkn!(Colon) ]
-      Nop                 := [ word!("nop") ]
-      Daa                 := [ word!("daa") ]
-      Cpl                 := [ word!("cpl") ]
-      Ccf                 := [ word!("ccf") ]
-      Scf                 := [ word!("scf") ]
-      Halt                := [ word!("halt") ]
-      Stop                := [ word!("stop") ]
-      Ei                  := [ word!("ei") ]
-      Di                  := [ word!("di") ]
-      Rlca                := [ word!("rlca") ]
-      Rla                 := [ word!("rla") ]
-      Rrca                := [ word!("rrca") ]
-      Rra                 := [ word!("rra") ]
-      Reti                := [ word!("reti") ]
-      Push                := [ word!("push") Operand ]
-      Pop                 := [ word!("pop") Operand ]
-      Dec                 := [ word!("dec") Operand ]
-      Inc                 := [ word!("inc") Operand ]
-      Sub                 := [ word!("sub") Operand ]
-      And                 := [ word!("and") Operand ]
-      Xor                 := [ word!("xor") Operand ]
-      Or                  := [ word!("or") Operand ]
-      Cp                  := [ word!("cp") Operand ]
-      Ret                 := [ word!("ret") MaybeConditionOnly ]
-      Jr                  := [ word!("jr") MaybeCondition Value ]
-      Jp                  := [ word!("jp") MaybeCondition Value ]
-      Call                := [ word!("call") MaybeCondition Value ]
-      Ld                  := [ word!("ld") Operand tkn!(Comma) Operand ]
-      Ldh                 := [ word!("ldh") Operand tkn!(Comma) Operand ]
-      Ldi                 := [ word!("ldi") Operand tkn!(Comma) Operand ]
-      Ldd                 := [ word!("ldd") Operand tkn!(Comma) Operand ]
-      Add                 := [ word!("add") Operand tkn!(Comma) Operand ]
-      Adc                 := [ word!("adc") Operand tkn!(Comma) Operand ]
-      Sbc                 := [ word!("sbc") Operand tkn!(Comma) Operand ]
+
+      // Operands
       Operand             := [ Register ]
                              [ tkn!(LeftParens) term!(Number) tkn!(RightParens) ]
                              [ Value ]
-      Instruction         := [ Nop ] [ Daa ] [ Cpl ] [ Ccf ] [ Scf ] [ Halt ]
-                             [ Stop ] [ Ei ] [ Di ] [ Rlca ] [ Rla ] [ Rrca ]
-                             [ Rra ] [ Reti ] [ Inc ] [ Dec ] [ Sub ] [ And ]
-                             [ Xor ] [ Or ] [ Cp ] [ Push ] [ Pop ] [ Ret ]
-                             [ Ld ] [ Ldh ] [ Ldi ] [ Ldd ] [ Add ] [ Adc ]
-                             [ Sbc ] [ Jr ] [ Jp ] [ Call ]
       Register            := [ word!("a") ] [ word!("b") ] [ word!("c") ]
                              [ word!("d") ] [ word!("e") ] [ word!("f") ]
                              [ word!("af") ] [ word!("bc") ] [ word!("de") ]
@@ -94,10 +54,86 @@ lazy_static! {
       Value               := [ Constant ] [ Identifier ]
       Constant            := [ term!(Number) ]
       Identifier          := [ term!(Alphanumeric) ]
+
+      // Conditions
       Condition           := [ word!("nz") ] [ word!("z") ]
                              [ word!("nc") ] [ word!("c") ]
       MaybeConditionOnly  := [ term!(Epsilon) ] [ Condition ]
       MaybeCondition      := [ term!(Epsilon) ] [ Condition tkn!(Comma) ]
+
+      // Instructions
+      Instruction         := [ Adc ] [ Add ] [ And ] [ Cp ] [ Dec ] [ Inc ]
+                             [ Or ] [ Sbc ] [ Sub ] [ Xor ]
+                             [ Bit ] [ Res ] [ Set ] [ Swap ]
+                             [ Rl ] [ Rla ] [ Rlc ] [ Rlca ] [ Rr ] [ Rra ]
+                             [ Rrc ] [ Rrca ] [ Sla ] [ Sra ] [ Srl ]
+                             [ Ld ] [ Ldh ] [ Ldi ] [ Ldd ]
+                             [ Call ] [ Jp ] [ Jr ] [ Ret ] [ Reti ] [ Rst ]
+                             [ Pop ] [ Push ]
+                             [ Ccf ] [ Cpl ] [ Daa ] [ Di ] [ Ei ] [ Halt ]
+                             [ Nop ] [ Scf ] [ Stop ]
+      MaybeInstruction    := [ term!(Epsilon) ]
+                             [ Instruction ]
+
+      // Arithmetic and logic
+      Adc                 := [ word!("adc") Operand tkn!(Comma) Operand ]
+      Add                 := [ word!("add") Operand tkn!(Comma) Operand ]
+      And                 := [ word!("and") Operand ]
+      Cp                  := [ word!("cp") Operand ]
+      Dec                 := [ word!("dec") Operand ]
+      Inc                 := [ word!("inc") Operand ]
+      Or                  := [ word!("or") Operand ]
+      Sbc                 := [ word!("sbc") Operand tkn!(Comma) Operand ]
+      Sub                 := [ word!("sub") Operand ]
+      Xor                 := [ word!("xor") Operand ]
+
+      // Bit operations
+      Bit                 := [ word!("bit") term!(Number) tkn!(Comma) Operand ]
+      Res                 := [ word!("res") term!(Number) tkn!(Comma) Operand ]
+      Set                 := [ word!("set") term!(Number) tkn!(Comma) Operand ]
+      Swap                := [ word!("swap") Operand ]
+
+      // Shift and rotate operations
+      Rl                  := [ word!("rl") Operand ]
+      Rla                 := [ word!("rla") ]
+      Rlc                 := [ word!("rlc") Operand ]
+      Rlca                := [ word!("rlca") ]
+      Rr                  := [ word!("rr") Operand ]
+      Rra                 := [ word!("rra") ]
+      Rrc                 := [ word!("rrc") Operand ]
+      Rrca                := [ word!("rrca") ]
+      Sla                 := [ word!("sla") Operand ]
+      Sra                 := [ word!("sra") Operand ]
+      Srl                 := [ word!("srl") Operand ]
+
+      // Load operations
+      Ld                  := [ word!("ld") Operand tkn!(Comma) Operand ]
+      Ldh                 := [ word!("ldh") Operand tkn!(Comma) Operand ]
+      Ldi                 := [ word!("ldi") Operand tkn!(Comma) Operand ]
+      Ldd                 := [ word!("ldd") Operand tkn!(Comma) Operand ]
+
+      // Jump and call operations
+      Call                := [ word!("call") MaybeCondition Value ]
+      Jp                  := [ word!("jp") MaybeCondition Value ]
+      Jr                  := [ word!("jr") MaybeCondition Value ]
+      Ret                 := [ word!("ret") MaybeConditionOnly ]
+      Reti                := [ word!("reti") ]
+      Rst                 := [ word!("rst") term!(Number) ]
+
+      // Stack operations
+      Pop                 := [ word!("pop") Operand ]
+      Push                := [ word!("push") Operand ]
+
+      // Misc operations
+      Ccf                 := [ word!("ccf") ]
+      Cpl                 := [ word!("cpl") ]
+      Daa                 := [ word!("daa") ]
+      Di                  := [ word!("di") ]
+      Ei                  := [ word!("ei") ]
+      Halt                := [ word!("halt") ]
+      Nop                 := [ word!("nop") ]
+      Scf                 := [ word!("scf") ]
+      Stop                := [ word!("stop") ]
     ).unwrap()
   };
 }
@@ -118,41 +154,67 @@ pub enum Symbol {
   MaybeConditionOnly,
   MaybeCondition,
   Condition,
-  Nop,
-  Daa,
-  Cpl,
-  Ccf,
-  Scf,
-  Halt,
-  Stop,
-  Ei,
-  Di,
-  Rlca,
-  Rla,
-  Rrca,
-  Rra,
-  Reti,
-  Inc,
-  Dec,
-  Sub,
+  Terminal(Terminal),
+
+  // Arithmetic and logic
+  Adc,
+  Add,
   And,
-  Xor,
-  Or,
   Cp,
-  Push,
-  Pop,
-  Ret,
+  Dec,
+  Inc,
+  Or,
+  Sbc,
+  Sub,
+  Xor,
+
+  // Bit operations
+  Bit,
+  Res,
+  Set,
+  Swap,
+
+  // Shift and rotate operations
+  Rl,
+  Rla,
+  Rlc,
+  Rlca,
+  Rr,
+  Rra,
+  Rrc,
+  Rrca,
+  Sla,
+  Sra,
+  Srl,
+
+  // Load operations
   Ld,
   Ldh,
   Ldi,
   Ldd,
-  Add,
-  Adc,
-  Sbc,
-  Jr,
-  Jp,
+
+  // Jump and call operations
   Call,
-  Terminal(Terminal),
+  Jp,
+  Jr,
+  Ret,
+  Reti,
+  Rst,
+
+  // Stack operations
+  Pop,
+  Push,
+
+  // Misc operations
+  Ccf,
+  Cpl,
+  Daa,
+  Di,
+  Ei,
+  Halt,
+  Nop,
+  Scf,
+  Stop,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -448,6 +510,54 @@ mod test {
         Instruction,
         Dec,
         Terminal(Token(Word("dec".to_string()))),
+        Operand,
+        Register,
+        Terminal(Token(Word("a".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn number() {
+    let tokens = vec![Word("rst".to_string()), Word("2".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Rst,
+        Terminal(Token(Word("rst".to_string()))),
+        Terminal(Token(Word("2".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn number_and_operand() {
+    let tokens = vec![
+      Word("set".to_string()),
+      Word("2".to_string()),
+      Comma,
+      Word("a".to_string()),
+      Newline,
+    ];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Set,
+        Terminal(Token(Word("set".to_string()))),
+        Terminal(Token(Word("2".to_string()))),
+        Terminal(Token(Comma)),
         Operand,
         Register,
         Terminal(Token(Word("a".to_string()))),
