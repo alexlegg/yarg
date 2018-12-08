@@ -102,13 +102,6 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
     }
   }
 
-  /*
-    if pc >= 0x0b7b && pc <= 0x0b7f {
-	    cpu.dump_regs();
-	    println!("{:#06x}: {:?}", pc, inst);
-  	}
-    */
-
   cpu.set_pc(pc.wrapping_add(inst_size))?;
 
   emu.instruction_stream.pop_front();

@@ -1,18 +1,8 @@
-mod asm;
-mod cartridge;
-mod cpu;
-mod decode;
-mod emulator;
-mod joypad;
-mod ppu;
-mod sdl;
-mod timer;
-mod util;
-
-use crate::emulator::Emulator;
 use std::env;
 use std::io;
 use std::io::Write;
+use yarg::emulator::Emulator;
+use yarg::sdl;
 
 fn debugger_cli(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<(), String> {
   let mut emu = Emulator::new(bootrom_fn, rom_fn)?;
@@ -39,7 +29,7 @@ fn debugger_cli(bootrom_fn: Option<&str>, rom_fn: &str) -> Result<(), String> {
             sdl::init(&mut emu, false);
           }
           Some("reset") | Some("e") => {
-            emu = emulator::Emulator::new(bootrom_fn, rom_fn)?;
+            emu = Emulator::new(bootrom_fn, rom_fn)?;
           }
           Some("quit") | Some("q") => break,
           _ => println!("Unrecognised command"),
@@ -89,7 +79,7 @@ fn main() {
         Err(s) => println!("{:?}", s),
         _ => (),
       }
-    } else if let Ok(mut emu) = emulator::Emulator::new(bootrom_fn, rom_fn) {
+    } else if let Ok(mut emu) = Emulator::new(bootrom_fn, rom_fn) {
       sdl::init(&mut emu, show_vram);
     }
   }
