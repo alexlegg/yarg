@@ -1,6 +1,8 @@
 use crate::asm::lexer::Token;
+use failure::*;
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::hash::Hash;
 use std::iter::Peekable;
 
@@ -218,6 +220,13 @@ pub enum Symbol {
   Stop,
 }
 
+impl fmt::Display for Symbol {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    // Use debug output for now
+    write!(f, "{:?}", self)
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Terminal {
   Token(Token),
@@ -231,6 +240,21 @@ pub enum Terminal {
 pub struct Ll1Parser<I: Iterator<Item = Token>> {
   token_iter: Peekable<I>,
   stack: Vec<Symbol>,
+}
+
+#[derive(Clone, Debug, Fail, PartialEq, Eq)]
+pub struct Ll1ParserError {
+  expected: Symbol,
+  actual: Option<Token>,
+}
+
+impl fmt::Display for Ll1ParserError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self.actual {
+      Some(token) => write!(f, "Expected: {:?}. Actual {:?}", self.expected, token),
+      None => write!(f, "Unexpected end of input"),
+    }
+  }
 }
 
 impl<I: Iterator<Item = Token>> Ll1Parser<I> {
@@ -260,7 +284,7 @@ impl<I: Iterator<Item = Token>> Ll1Parser<I> {
     entry.cloned()
   }
 
-  pub fn parse(self) -> Result<Vec<Symbol>, String> {
+  pub fn parse(self) -> Result<Vec<Symbol>, Ll1ParserError> {
     let mut r = Vec::new();
     for s in self {
       r.push(s?);
@@ -270,65 +294,78 @@ impl<I: Iterator<Item = Token>> Ll1Parser<I> {
 }
 
 impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
-  type Item = Result<Symbol, String>;
+  type Item = Result<Symbol, Ll1ParserError>;
 
-  fn next(&mut self) -> Option<Result<Symbol, String>> {
+  fn next(&mut self) -> Option<Result<Symbol, Ll1ParserError>> {
     match self.stack.pop()? {
-      Symbol::Terminal(Terminal::Alphanumeric) => {
-        if self
-          .token_iter
-          .peek()
-          .map_or(false, |t| t.is_alphanumeric_word())
-        {
-          Some(Ok(Symbol::Terminal(Terminal::Token(
-            self.token_iter.next().unwrap(),
-          ))))
+      expected @ Symbol::Terminal(Terminal::Alphanumeric) => {
+        if let Some(token) = self.token_iter.next() {
+          if token.is_alphanumeric_word() {
+            Some(Ok(Symbol::Terminal(Terminal::Token(token))))
+          } else {
+            Some(Err(Ll1ParserError {
+              expected,
+              actual: Some(token),
+            }))
+          }
         } else {
-          Some(Err(format!(
-            "LL1: Expected Alphanumeric, got {:?}",
-            self.token_iter.peek()
-          )))
+          Some(Err(Ll1ParserError {
+            expected,
+            actual: None,
+          }))
         }
       }
-      Symbol::Terminal(Terminal::Number) => {
-        if self
-          .token_iter
-          .peek()
-          .map_or(false, |t| t.is_numeric_word())
-        {
-          Some(Ok(Symbol::Terminal(Terminal::Token(
-            self.token_iter.next().unwrap(),
-          ))))
+      expected @ Symbol::Terminal(Terminal::Number) => {
+        if let Some(token) = self.token_iter.next() {
+          if token.is_numeric_word() {
+            Some(Ok(Symbol::Terminal(Terminal::Token(token))))
+          } else {
+            Some(Err(Ll1ParserError {
+              expected,
+              actual: Some(token),
+            }))
+          }
         } else {
-          Some(Err(format!(
-            "LL1: Expected Numeric, got {:?}",
-            self.token_iter.peek()
-          )))
+          Some(Err(Ll1ParserError {
+            expected,
+            actual: None,
+          }))
         }
       }
-      Symbol::Terminal(Terminal::Token(token)) => {
-        if self.token_iter.peek().map_or(false, |t| *t == token) {
-          self.token_iter.next();
-          Some(Ok(Symbol::Terminal(Terminal::Token(token))))
+      Symbol::Terminal(Terminal::Token(expected)) => {
+        if let Some(token) = self.token_iter.next() {
+          if token == expected {
+            Some(Ok(Symbol::Terminal(Terminal::Token(token))))
+          } else {
+            Some(Err(Ll1ParserError {
+              expected: Symbol::Terminal(Terminal::Token(expected)),
+              actual: Some(token),
+            }))
+          }
         } else {
-          Some(Err(format!(
-            "LL1: Expected {:?}, got {:?}",
-            token,
-            self.token_iter.peek()
-          )))
+          Some(Err(Ll1ParserError {
+            expected: Symbol::Terminal(Terminal::Token(expected)),
+            actual: None,
+          }))
         }
       }
-      Symbol::Terminal(Terminal::End) => {
-        self.token_iter.peek()?;
-        Some(Err(format!(
-          "LL1: Expected end of input, got {:?}",
-          self.token_iter.peek()
-        )))
+      expected @ Symbol::Terminal(Terminal::End) => {
+        if let Some(token) = self.token_iter.next() {
+          Some(Err(Ll1ParserError {
+            expected,
+            actual: Some(token),
+          }))
+        } else {
+          None
+        }
       }
       top => {
         let symbols = self.table_lookup(&top);
         if symbols.is_none() {
-          return Some(Err(format!("Failed on table lookup: {:?}", top)));
+          return Some(Err(Ll1ParserError {
+            expected: top,
+            actual: self.token_iter.next(),
+          }));
         }
         self
           .stack
@@ -838,6 +875,32 @@ mod test {
         Terminal(Token(Newline)),
         Program,
       ])
+    );
+  }
+
+  #[test]
+  fn unexpected_symbol() {
+    let tokens = vec![Word("rst".to_string()), Word("ld".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Err(Ll1ParserError {
+        expected: Terminal(Number),
+        actual: Some(Word("ld".to_string())),
+      })
+    );
+  }
+
+  #[test]
+  fn unexpected_end() {
+    let tokens = vec![Word("ld".to_string())];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Err(Ll1ParserError {
+        expected: Operand,
+        actual: None,
+      })
     );
   }
 }

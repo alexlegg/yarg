@@ -285,7 +285,10 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       let next_a = cpu.a.wrapping_add(val).wrapping_add(cy);
       cpu.set_flag(Flag::Z, next_a == 0);
       cpu.set_flag(Flag::N, false);
-      cpu.set_flag(Flag::C, u16::from(old_a) + u16::from(val) + u16::from(cy) > 0xff);
+      cpu.set_flag(
+        Flag::C,
+        u16::from(old_a) + u16::from(val) + u16::from(cy) > 0xff,
+      );
       cpu.set_flag(Flag::H, (old_a & 0x0f) + (val & 0x0f) + cy > 0x0f);
       cpu.a = next_a;
       Ok(())

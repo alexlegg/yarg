@@ -53,9 +53,7 @@ impl Assembler {
 
   fn encode(mut self) -> Result<Vec<u8>, String> {
     let mut header = Header::new();
-    header
-      .title
-      .copy_from_slice(b"test rom\0\0\0\0\0\0\0\0");
+    header.title.copy_from_slice(b"test rom\0\0\0\0\0\0\0\0");
     header.set_header_checksum();
     self.data.splice(0x100..0x14e, header.serialise());
     let mut checksum: u16 = 0;

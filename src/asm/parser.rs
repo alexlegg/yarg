@@ -1,6 +1,7 @@
 use crate::asm::lexer::{Lexer, Token};
 use crate::asm::ll1::{Ll1Parser, Symbol, Terminal};
 use crate::asm::operation::{Address, Condition, Operation, Reg};
+use failure::*;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -41,39 +42,39 @@ impl<'a> Parser<'a> {
     Ok(r)
   }
 
-  fn next_symbol(&mut self) -> Result<Symbol, String> {
+  fn next_symbol(&mut self) -> Result<Symbol, Error> {
     match self.ll1.next() {
-      Some(s) => s,
-      None => Err("Unexpected end of input".to_string()),
+      Some(s) => s.map_err(Error::from),
+      None => Err(format_err!("Unexpected end of input")),
     }
   }
 
-  fn next_word(&mut self) -> Result<String, String> {
+  fn next_word(&mut self) -> Result<String, Error> {
     match self.next_symbol()? {
       Symbol::Terminal(Terminal::Token(Token::Word(word))) => Ok(word),
-      s => Err(format!("Expected word, got symbol: {:?}", s)),
+      s => Err(format_err!("Expected word, got symbol: {:?}", s)),
     }
   }
 
-  fn expect(&mut self, symbol: &Symbol) -> Result<(), String> {
+  fn expect(&mut self, symbol: &Symbol) -> Result<(), Error> {
     let next = self.next_symbol()?;
     if next == *symbol {
       Ok(())
     } else {
-      Err(format!("Expected {:?}, got symbol {:?}", symbol, next))
+      Err(format_err!("Expected {:?}, got symbol {:?}", symbol, next))
     }
   }
 
-  fn expect_word(&mut self, word: &str) -> Result<(), String> {
+  fn expect_word(&mut self, word: &str) -> Result<(), Error> {
     let next = self.next_word()?;
     if next == word {
       Ok(())
     } else {
-      Err(format!("Expected {:?}, got {:?}", word, next))
+      Err(format_err!("Expected {:?}, got {:?}", word, next))
     }
   }
 
-  fn maybe_expect(&mut self, symbol: &Symbol) -> Result<bool, String> {
+  fn maybe_expect(&mut self, symbol: &Symbol) -> Result<bool, Error> {
     let peek_matches = match self.ll1.peek() {
       Some(Ok(next)) => *next == *symbol,
       _ => false,
@@ -84,11 +85,11 @@ impl<'a> Parser<'a> {
     Ok(peek_matches)
   }
 
-  fn expect_token(&mut self, token: Token) -> Result<(), String> {
+  fn expect_token(&mut self, token: Token) -> Result<(), Error> {
     self.expect(&Symbol::Terminal(Terminal::Token(token)))
   }
 
-  fn match_program(&mut self) -> Result<Option<Statement>, String> {
+  fn match_program(&mut self) -> Result<Option<Statement>, Error> {
     self.expect(&Symbol::Program)?;
     match self.ll1.next() {
       Some(Ok(Symbol::Statement)) => {
@@ -96,13 +97,13 @@ impl<'a> Parser<'a> {
         self.expect_token(Token::Newline)?;
         Ok(Some(statement))
       }
-      Some(Ok(s)) => Err(format!("Expected Statement, got {:?}", s)),
+      Some(Ok(s)) => Err(format_err!("Expected Statement, got {:?}", s)),
       None => Ok(None),
-      Some(Err(e)) => Err(e),
+      Some(Err(e)) => Err(Error::from(e)),
     }
   }
 
-  fn match_statement(&mut self) -> Result<Statement, String> {
+  fn match_statement(&mut self) -> Result<Statement, Error> {
     match self.next_symbol()? {
       Symbol::Instruction => {
         let instr = self.match_instruction()?;
@@ -121,24 +122,24 @@ impl<'a> Parser<'a> {
         let (d, v) = self.match_directive()?;
         Ok(Statement::Directive(d, v))
       }
-      s => Err(format!("Expected a statement, got {:?}", s)),
+      s => Err(format_err!("Expected a statement, got {:?}", s)),
     }
   }
 
-  fn match_label(&mut self) -> Result<String, String> {
+  fn match_label(&mut self) -> Result<String, Error> {
     let name = self.next_word()?;
     self.expect_token(Token::Colon)?;
     Ok(name)
   }
 
-  fn match_directive(&mut self) -> Result<(String, String), String> {
+  fn match_directive(&mut self) -> Result<(String, String), Error> {
     self.expect_token(Token::Dot)?;
     let name = self.next_word()?;
     let value = self.next_word()?;
     Ok((name, value))
   }
 
-  fn match_instruction(&mut self) -> Result<Operation<LabelOrAddress>, String> {
+  fn match_instruction(&mut self) -> Result<Operation<LabelOrAddress>, Error> {
     match self.next_symbol()? {
       // Arithmetic and logic
       Symbol::Adc => {
@@ -304,13 +305,13 @@ impl<'a> Parser<'a> {
         let source = self.match_data_operand()?;
         Ok(Operation::Load8(destination, source))
       }
-      Symbol::Ldh => Err("Not implemented".to_string()),
-      Symbol::Ldi => Err("Not implemented".to_string()),
-      Symbol::Ldd => Err("Not implemented".to_string()),
+      Symbol::Ldh => Err(format_err!("Not implemented")),
+      Symbol::Ldi => Err(format_err!("Not implemented")),
+      Symbol::Ldd => Err(format_err!("Not implemented")),
 
       // Jump and call operations
-      Symbol::Call => Err("Not implemented".to_string()),
-      Symbol::Jp => Err("Not implemented".to_string()),
+      Symbol::Call => Err(format_err!("Not implemented")),
+      Symbol::Jp => Err(format_err!("Not implemented")),
       Symbol::Jr => {
         self.expect_word("jr")?;
         self.expect(&Symbol::MaybeCondition)?;
@@ -396,25 +397,25 @@ impl<'a> Parser<'a> {
         Ok(Operation::Stop)
       }
 
-      s => Err(format!("Expected instruction, got {:?}", s)),
+      s => Err(format_err!("Expected instruction, got {:?}", s)),
     }
   }
 
-  fn match_data_operand(&mut self) -> Result<LabelOrAddress, String> {
+  fn match_data_operand(&mut self) -> Result<LabelOrAddress, Error> {
     self.match_operand(
       |constant| LabelOrAddress::Resolved(Address::Data8(constant)),
       LabelOrAddress::DataLabel,
     )
   }
 
-  fn match_jr_operand(&mut self) -> Result<LabelOrAddress, String> {
+  fn match_jr_operand(&mut self) -> Result<LabelOrAddress, Error> {
     self.match_operand(
       |constant| LabelOrAddress::Resolved(Address::Relative(constant)),
       LabelOrAddress::RelativeLabel,
     )
   }
 
-  fn match_operand<F, G>(&mut self, f: F, g: G) -> Result<LabelOrAddress, String>
+  fn match_operand<F, G>(&mut self, f: F, g: G) -> Result<LabelOrAddress, Error>
   where
     F: FnOnce(u8) -> LabelOrAddress,
     G: FnOnce(String) -> LabelOrAddress,
@@ -427,27 +428,27 @@ impl<'a> Parser<'a> {
           .map(|r| LabelOrAddress::Resolved(Address::Register(r)));
       }
       s => {
-        return Err(format!("Expected Register or Value. Got {:?}", s));
+        return Err(format_err!("Expected Register or Value. Got {:?}", s));
       }
     }
     match self.next_symbol()? {
       Symbol::Constant => self.match_constant().map(f),
       Symbol::Identifier => self.next_word().map(g),
-      s => Err(format!("Expected Register or Value. Got {:?}", s)),
+      s => Err(format_err!("Expected Register or Value. Got {:?}", s)),
     }
   }
 
-  fn match_constant<T>(&mut self) -> Result<T, String>
+  fn match_constant<T>(&mut self) -> Result<T, Error>
   where
     T: std::str::FromStr,
   {
     self
       .next_word()?
       .parse::<T>()
-      .map_err(|_| "Failed to parse constant".to_string())
+      .map_err(|_| format_err!("Failed to parse constant"))
   }
 
-  fn match_register(&mut self) -> Result<Reg, String> {
+  fn match_register(&mut self) -> Result<Reg, Error> {
     match self.next_word()?.as_ref() {
       "a" => Ok(Reg::A),
       "b" => Ok(Reg::B),
@@ -462,17 +463,17 @@ impl<'a> Parser<'a> {
       "hl" => Ok(Reg::HL),
       "sp" => Ok(Reg::SP),
       "pc" => Ok(Reg::PC),
-      s => Err(format!("Expected register, got {:?}", s)),
+      s => Err(format_err!("Expected register, got {:?}", s)),
     }
   }
 
-  fn match_condition(&mut self) -> Result<Condition, String> {
+  fn match_condition(&mut self) -> Result<Condition, Error> {
     match self.next_word()?.as_ref() {
       "c" => Ok(Condition::Carry),
       "nc" => Ok(Condition::NonCarry),
       "z" => Ok(Condition::Zero),
       "nz" => Ok(Condition::NonZero),
-      s => Err(format!("Expected condition, got {:?}", s)),
+      s => Err(format_err!("Expected condition, got {:?}", s)),
     }
   }
 }
@@ -488,7 +489,7 @@ impl<'a> Iterator for Parser<'a> {
     match self.match_program() {
       Ok(Some(statement)) => Some(Ok(statement)),
       Ok(None) => None,
-      Err(e) => Some(Err(e)),
+      Err(e) => Some(Err(e.to_string())),
     }
   }
 }

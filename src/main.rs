@@ -75,7 +75,9 @@ fn main() -> Result<(), String> {
   } else {
     None
   };
-  let rom_fn = args.last().ok_or_else(|| "Must specify ROM file".to_string())?;
+  let rom_fn = args
+    .last()
+    .ok_or_else(|| "Must specify ROM file".to_string())?;
 
   let rom = fs::read(rom_fn).map_err(|_| "Could not read ROM file".to_string())?;
 
