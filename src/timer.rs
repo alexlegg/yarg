@@ -4,7 +4,7 @@ use crate::cpu::TrapHandler;
 const CTRL_FREQ: u8 = 0b11;
 const CTRL_ENABLE: u8 = 0b1 << 2;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Timer {
   timer: u16,
   counter: u8,
@@ -14,15 +14,10 @@ pub struct Timer {
 
 impl Timer {
   pub fn new() -> Timer {
-    Timer {
-      timer: 0,
-      counter: 0,
-      modulo: 0,
-      control: 0,
-    }
+    Timer::default()
   }
 
-  fn freqency_bitmask(&self) -> u16 {
+  fn freqency_bitmask(self) -> u16 {
     let freq = self.control & 0b11;
     if freq == 0 {
       1 << 9
@@ -48,7 +43,7 @@ impl Timer {
       self.counter = new_counter;
       return interrupt;
     }
-    return false;
+    false
   }
 }
 

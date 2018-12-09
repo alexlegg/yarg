@@ -44,20 +44,20 @@ impl<'a> Parser<'a> {
   fn next_symbol(&mut self) -> Result<Symbol, String> {
     match self.ll1.next() {
       Some(s) => s,
-      None => Err(format!("Unexpected end of input")),
+      None => Err("Unexpected end of input".to_string()),
     }
   }
 
   fn next_word(&mut self) -> Result<String, String> {
     match self.next_symbol()? {
       Symbol::Terminal(Terminal::Token(Token::Word(word))) => Ok(word),
-      s @ _ => Err(format!("Expected word, got symbol: {:?}", s)),
+      s => Err(format!("Expected word, got symbol: {:?}", s)),
     }
   }
 
-  fn expect(&mut self, symbol: Symbol) -> Result<(), String> {
+  fn expect(&mut self, symbol: &Symbol) -> Result<(), String> {
     let next = self.next_symbol()?;
-    if next == symbol {
+    if next == *symbol {
       Ok(())
     } else {
       Err(format!("Expected {:?}, got symbol {:?}", symbol, next))
@@ -73,9 +73,9 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn maybe_expect(&mut self, symbol: Symbol) -> Result<bool, String> {
+  fn maybe_expect(&mut self, symbol: &Symbol) -> Result<bool, String> {
     let peek_matches = match self.ll1.peek() {
-      Some(Ok(next)) => *next == symbol,
+      Some(Ok(next)) => *next == *symbol,
       _ => false,
     };
     if peek_matches {
@@ -85,11 +85,11 @@ impl<'a> Parser<'a> {
   }
 
   fn expect_token(&mut self, token: Token) -> Result<(), String> {
-    self.expect(Symbol::Terminal(Terminal::Token(token)))
+    self.expect(&Symbol::Terminal(Terminal::Token(token)))
   }
 
   fn match_program(&mut self) -> Result<Option<Statement>, String> {
-    self.expect(Symbol::Program)?;
+    self.expect(&Symbol::Program)?;
     match self.ll1.next() {
       Some(Ok(Symbol::Statement)) => {
         let statement = self.match_statement()?;
@@ -110,8 +110,8 @@ impl<'a> Parser<'a> {
       }
       Symbol::Label => {
         let label = self.match_label()?;
-        self.expect(Symbol::MaybeInstruction)?;
-        if self.maybe_expect(Symbol::Instruction)? {
+        self.expect(&Symbol::MaybeInstruction)?;
+        if self.maybe_expect(&Symbol::Instruction)? {
           let instr = self.match_instruction()?;
           self.pending_statement = Some(Statement::Instruction(instr))
         }
@@ -143,61 +143,61 @@ impl<'a> Parser<'a> {
       // Arithmetic and logic
       Symbol::Adc => {
         self.expect_word("adc")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::And(source))
       }
       Symbol::Add => {
         self.expect_word("add")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::And(source))
       }
       Symbol::And => {
         self.expect_word("and")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::And(source))
       }
       Symbol::Cp => {
         self.expect_word("cp")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Compare(source))
       }
       Symbol::Dec => {
         self.expect_word("dec")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let destination = self.match_data_operand()?;
         Ok(Operation::Decrement(destination))
       }
       Symbol::Inc => {
         self.expect_word("inc")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let destination = self.match_data_operand()?;
         Ok(Operation::Increment(destination))
       }
       Symbol::Or => {
         self.expect_word("or")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Or(source))
       }
       Symbol::Sbc => {
         self.expect_word("sbc")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Or(source))
       }
       Symbol::Sub => {
         self.expect_word("sub")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Sub(source))
       }
       Symbol::Xor => {
         self.expect_word("xor")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Xor(source))
       }
@@ -207,7 +207,7 @@ impl<'a> Parser<'a> {
         self.expect_word("bit")?;
         let bit = self.match_constant()?;
         self.expect_token(Token::Comma)?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Bit(bit, source))
       }
@@ -215,7 +215,7 @@ impl<'a> Parser<'a> {
         self.expect_word("res")?;
         let bit = self.match_constant()?;
         self.expect_token(Token::Comma)?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::ResetBit(bit, source))
       }
@@ -223,13 +223,13 @@ impl<'a> Parser<'a> {
         self.expect_word("set")?;
         let bit = self.match_constant()?;
         self.expect_token(Token::Comma)?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::SetBit(bit, source))
       }
       Symbol::Swap => {
         self.expect_word("swap")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Swap(source))
       }
@@ -237,7 +237,7 @@ impl<'a> Parser<'a> {
       // Shift and rotate operations
       Symbol::Rl => {
         self.expect_word("rl")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::RotateLeft(false, source))
       }
@@ -247,7 +247,7 @@ impl<'a> Parser<'a> {
       }
       Symbol::Rlc => {
         self.expect_word("rlc")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::RotateLeft(true, source))
       }
@@ -257,7 +257,7 @@ impl<'a> Parser<'a> {
       }
       Symbol::Rr => {
         self.expect_word("rr")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::RotateRight(false, source))
       }
@@ -267,7 +267,7 @@ impl<'a> Parser<'a> {
       }
       Symbol::Rrc => {
         self.expect_word("rrc")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::RotateRight(true, source))
       }
@@ -277,19 +277,19 @@ impl<'a> Parser<'a> {
       }
       Symbol::Sla => {
         self.expect_word("sla")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::ShiftLeft(source))
       }
       Symbol::Sra => {
         self.expect_word("sra")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::ShiftRight(source))
       }
       Symbol::Srl => {
         self.expect_word("srl")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::ShiftRightLogical(source))
       }
@@ -297,10 +297,10 @@ impl<'a> Parser<'a> {
       // Load operations
       Symbol::Ld => {
         self.expect_word("ld")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let destination = self.match_data_operand()?;
         self.expect_token(Token::Comma)?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
         Ok(Operation::Load8(destination, source))
       }
@@ -313,8 +313,8 @@ impl<'a> Parser<'a> {
       Symbol::Jp => Err("Not implemented".to_string()),
       Symbol::Jr => {
         self.expect_word("jr")?;
-        self.expect(Symbol::MaybeCondition)?;
-        if self.maybe_expect(Symbol::Condition)? {
+        self.expect(&Symbol::MaybeCondition)?;
+        if self.maybe_expect(&Symbol::Condition)? {
           let condition = self.match_condition()?;
           self.expect_token(Token::Comma)?;
           let source = self.match_jr_operand()?;
@@ -326,8 +326,8 @@ impl<'a> Parser<'a> {
       }
       Symbol::Ret => {
         self.expect_word("ret")?;
-        self.expect(Symbol::MaybeConditionOnly)?;
-        if self.maybe_expect(Symbol::Condition)? {
+        self.expect(&Symbol::MaybeConditionOnly)?;
+        if self.maybe_expect(&Symbol::Condition)? {
           let condition = self.match_condition()?;
           Ok(Operation::Return(condition))
         } else {
@@ -347,13 +347,13 @@ impl<'a> Parser<'a> {
       // Stack operations
       Symbol::Pop => {
         self.expect_word("pop")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let value = self.match_data_operand()?;
         Ok(Operation::Pop(value))
       }
       Symbol::Push => {
         self.expect_word("push")?;
-        self.expect(Symbol::Operand)?;
+        self.expect(&Symbol::Operand)?;
         let value = self.match_data_operand()?;
         Ok(Operation::Push(value))
       }
@@ -403,14 +403,14 @@ impl<'a> Parser<'a> {
   fn match_data_operand(&mut self) -> Result<LabelOrAddress, String> {
     self.match_operand(
       |constant| LabelOrAddress::Resolved(Address::Data8(constant)),
-      |identifier| LabelOrAddress::DataLabel(identifier),
+      LabelOrAddress::DataLabel,
     )
   }
 
   fn match_jr_operand(&mut self) -> Result<LabelOrAddress, String> {
     self.match_operand(
       |constant| LabelOrAddress::Resolved(Address::Relative(constant)),
-      |identifier| LabelOrAddress::RelativeLabel(identifier),
+      LabelOrAddress::RelativeLabel,
     )
   }
 
@@ -444,7 +444,7 @@ impl<'a> Parser<'a> {
     self
       .next_word()?
       .parse::<T>()
-      .map_err(|_e| format!("Failed to parse constant"))
+      .map_err(|_| "Failed to parse constant".to_string())
   }
 
   fn match_register(&mut self) -> Result<Reg, String> {
@@ -462,7 +462,7 @@ impl<'a> Parser<'a> {
       "hl" => Ok(Reg::HL),
       "sp" => Ok(Reg::SP),
       "pc" => Ok(Reg::PC),
-      s @ _ => Err(format!("Expected register, got {:?}", s)),
+      s => Err(format!("Expected register, got {:?}", s)),
     }
   }
 

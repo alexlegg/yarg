@@ -78,7 +78,7 @@ impl fmt::Debug for Address {
         if e > 0 {
           write!(f, "+{:#04x}", e)
         } else {
-          write!(f, "-{:#04x}", e * -1)
+          write!(f, "-{:#04x}", -e)
         }
       }
       Address::Extended(e) => write!(f, "$0xff00 + {:02x}", e),

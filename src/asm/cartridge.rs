@@ -20,8 +20,8 @@ pub struct Header {
   pub header_checksum: u8,
 }
 
-impl Header {
-  pub fn new() -> Header {
+impl Default for Header {
+  fn default() -> Header {
     Header {
       entry_point: [0, 0xc3, 0x50, 0x01], // NOP; JP 0x150;
       logo: NINTENDO_LOGO,
@@ -36,6 +36,12 @@ impl Header {
       rom_version: 0,
       header_checksum: 0,
     }
+  }
+}
+
+impl Header {
+  pub fn new() -> Header {
+    Header::default()
   }
 
   pub fn serialise(&self) -> Vec<u8> {
@@ -52,7 +58,7 @@ impl Header {
     out.push(self.old_licensee);
     out.push(self.rom_version);
     out.push(self.header_checksum);
-    return out;
+    out
   }
 
   pub fn set_header_checksum(&mut self) {

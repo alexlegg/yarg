@@ -2,7 +2,7 @@ use crate::asm::operation::{Address, Condition, Operation, Reg};
 use crate::util::bits;
 
 fn opcode_reg(opcode: u8) -> Address {
-  match opcode & 0b00000111 {
+  match opcode & 0b0000_0111 {
     0b000 => Address::Register(Reg::B),
     0b001 => Address::Register(Reg::C),
     0b010 => Address::Register(Reg::D),
@@ -31,7 +31,7 @@ fn ld_dest(opcode: u8) -> Address {
 }
 
 fn arithmetic16_source(opcode: u8) -> Address {
-  match (opcode & 0b00110000) >> 4 {
+  match (opcode & 0b0011_0000) >> 4 {
     0b00 => Address::Register(Reg::BC),
     0b01 => Address::Register(Reg::DE),
     0b10 => Address::Register(Reg::HL),
@@ -41,7 +41,7 @@ fn arithmetic16_source(opcode: u8) -> Address {
 }
 
 fn push_pop_source(opcode: u8) -> Address {
-  match (opcode & 0b00110000) >> 4 {
+  match (opcode & 0b0011_0000) >> 4 {
     0b00 => Address::Register(Reg::BC),
     0b01 => Address::Register(Reg::DE),
     0b10 => Address::Register(Reg::HL),
@@ -66,9 +66,9 @@ where
 {
   // TODO refactor this
   let read_operand16 = |o| -> Result<u16, String> {
-    let op1 = read_operand8(o)? as u16;
-    let op2 = read_operand8(o + 1)? as u16;
-    return Ok((op2 << 8) | op1);
+    let op1 = u16::from(read_operand8(o)?);
+    let op2 = u16::from(read_operand8(o + 1)?);
+    Ok((op2 << 8) | op1)
   };
 
   match opcode {
@@ -281,7 +281,7 @@ where
     // RST <fixed>
     0xc7 | 0xcf | 0xd7 | 0xdf | 0xe7 | 0xef | 0xf7 | 0xff => {
       // See Z80 Manual, Page 292.
-      Ok((1, Operation::Reset((opcode & 0b00111000) as u16)))
+      Ok((1, Operation::Reset(u16::from(opcode & 0b0011_1000))))
     }
     // RET
     0xc9 => {

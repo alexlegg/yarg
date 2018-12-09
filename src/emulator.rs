@@ -1,3 +1,4 @@
+#![allow(clippy::identity_op)]
 use crate::asm::operation::{Address, Condition, Operation, Reg};
 use crate::cpu::Cpu;
 use crate::cpu::Flag;
@@ -15,18 +16,17 @@ pub struct Emulator {
 }
 
 impl Emulator {
-  pub fn new(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Result<Emulator, String> {
-    let cpu = Cpu::new(bootrom, rom);
+  pub fn new(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Emulator {
     let mut emu = Emulator {
       instruction_stream: VecDeque::with_capacity(DEBUG_STREAM_SIZE),
-      cpu: cpu,
+      cpu: Cpu::new(bootrom, rom),
       breakpoints: Vec::new(),
       at_breakpoint: false,
     };
     for _ in 0..DEBUG_STREAM_SIZE {
       emu.instruction_stream.push_back((0, Operation::Nop));
     }
-    return Ok(emu);
+    emu
   }
 
   pub fn emu_loop(&mut self, joypad: JoypadInput) -> Result<(), String> {
@@ -43,22 +43,22 @@ impl Emulator {
   }
 
   pub fn screen_buffer(&self) -> &[u8] {
-    return &*self.cpu.ppu.screen_buffer;
+    &*self.cpu.ppu.screen_buffer
   }
 
   pub fn should_draw(&mut self) -> bool {
-    return self.cpu.ppu.should_draw();
+    self.cpu.ppu.should_draw()
   }
 
   pub fn get_tile_data(&mut self) -> Option<Box<[u8; 128 * 192 * 3]>> {
-    return self.cpu.ppu.get_tile_data();
+    self.cpu.ppu.get_tile_data()
   }
 
   pub fn debug_dump(&self) {
-    println!("");
+    println!();
     self.cpu.dump_stack();
     self.cpu.dump_regs();
-    println!("");
+    println!();
     println!("Dumping instruction stream");
     for (pc, inst) in &self.instruction_stream {
       println!("{:#06x}: {:?}", pc, inst);
@@ -74,6 +74,8 @@ fn half_borrowed(curr: u8, val: u8) -> bool {
   (curr & 0x0f) < (val & 0x0f)
 }
 
+#[allow(clippy::verbose_bit_mask)]
+#[allow(clippy::cyclomatic_complexity)]
 fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
   let cpu = &mut emu.cpu;
 
@@ -283,7 +285,7 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       let next_a = cpu.a.wrapping_add(val).wrapping_add(cy);
       cpu.set_flag(Flag::Z, next_a == 0);
       cpu.set_flag(Flag::N, false);
-      cpu.set_flag(Flag::C, old_a as u16 + val as u16 + cy as u16 > 0xff);
+      cpu.set_flag(Flag::C, u16::from(old_a) + u16::from(val) + u16::from(cy) > 0xff);
       cpu.set_flag(Flag::H, (old_a & 0x0f) + (val & 0x0f) + cy > 0x0f);
       cpu.a = next_a;
       Ok(())
@@ -435,10 +437,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       let mut val_next = val << 1;
       if copy_carry {
         val_next |= val >> 7;
-      } else {
-        if cpu.get_flag(Flag::C) {
-          val_next |= 1;
-        }
+      } else if cpu.get_flag(Flag::C) {
+        val_next |= 1;
       }
       cpu.set_flag(Flag::C, val & (1 << 7) > 0);
       cpu.set_flag(Flag::Z, false);
@@ -451,10 +451,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       let mut val_next = val >> 1;
       if copy_carry {
         val_next |= (val & 1) << 7;
-      } else {
-        if cpu.get_flag(Flag::C) {
-          val_next |= 1 << 7;
-        }
+      } else if cpu.get_flag(Flag::C) {
+        val_next |= 1 << 7;
       }
       cpu.set_flag(Flag::C, val & 1 > 0);
       cpu.set_flag(Flag::Z, false);
@@ -468,10 +466,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       let mut val_next = val << 1;
       if copy_carry {
         val_next |= val >> 7;
-      } else {
-        if cpu.get_flag(Flag::C) {
-          val_next |= 1;
-        }
+      } else if cpu.get_flag(Flag::C) {
+        val_next |= 1;
       }
       cpu.set_flag(Flag::C, val & (1 << 7) > 0);
       cpu.set_flag(Flag::Z, val_next == 0);
@@ -485,10 +481,8 @@ fn cpu_loop(emu: &mut Emulator) -> Result<(), String> {
       let mut val_next = val >> 1;
       if copy_carry {
         val_next |= (val & 1) << 7;
-      } else {
-        if cpu.get_flag(Flag::C) {
-          val_next |= 1 << 7;
-        }
+      } else if cpu.get_flag(Flag::C) {
+        val_next |= 1 << 7;
       }
       cpu.set_flag(Flag::C, val & 1 > 0);
       cpu.set_flag(Flag::Z, val_next == 0);

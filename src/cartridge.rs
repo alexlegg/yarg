@@ -5,16 +5,14 @@ pub struct Cartridge {
   rom: Vec<u8>,
   ram: Vec<u8>,
   rom_bank: usize,
-  ram_bank: usize,
 }
 
 impl Cartridge {
   pub fn new(rom: Vec<u8>) -> Cartridge {
     Cartridge {
-      rom: rom,
+      rom,
       ram: vec![0; 0x2000],
       rom_bank: 1,
-      ram_bank: 0,
     }
   }
 }

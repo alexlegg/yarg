@@ -15,13 +15,11 @@ pub fn init(emu: &mut Emulator, show_vram: bool) {
   let sdl_context = sdl2::init().unwrap();
   let video_subsystem = sdl_context.video().unwrap();
 
-  let mut screen_width = 320;
-  let mut screen_height = 288;
-
-  if show_vram {
-    screen_width += 256;
-    screen_height = 384;
-  }
+  let (screen_width, screen_height) = if show_vram {
+    (320, 288)
+  } else {
+    (320 + 256, 384)
+  };
 
   let window = video_subsystem
     .window("YARG", screen_width, screen_height)

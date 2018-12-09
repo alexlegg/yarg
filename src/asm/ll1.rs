@@ -257,7 +257,7 @@ impl<I: Iterator<Item = Token>> Ll1Parser<I> {
       Some(t) => row.get(&Terminal::Token(t.clone())),
       None => row.get(&Terminal::End),
     };
-    entry.map(|v| v.clone())
+    entry.cloned()
   }
 
   pub fn parse(self) -> Result<Vec<Symbol>, String> {
@@ -280,14 +280,14 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
           .peek()
           .map_or(false, |t| t.is_alphanumeric_word())
         {
-          return Some(Ok(Symbol::Terminal(Terminal::Token(
+          Some(Ok(Symbol::Terminal(Terminal::Token(
             self.token_iter.next().unwrap(),
-          ))));
+          ))))
         } else {
-          return Some(Err(format!(
+          Some(Err(format!(
             "LL1: Expected Alphanumeric, got {:?}",
             self.token_iter.peek()
-          )));
+          )))
         }
       }
       Symbol::Terminal(Terminal::Number) => {
@@ -296,39 +296,36 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
           .peek()
           .map_or(false, |t| t.is_numeric_word())
         {
-          return Some(Ok(Symbol::Terminal(Terminal::Token(
+          Some(Ok(Symbol::Terminal(Terminal::Token(
             self.token_iter.next().unwrap(),
-          ))));
+          ))))
         } else {
-          return Some(Err(format!(
+          Some(Err(format!(
             "LL1: Expected Numeric, got {:?}",
             self.token_iter.peek()
-          )));
+          )))
         }
       }
       Symbol::Terminal(Terminal::Token(token)) => {
         if self.token_iter.peek().map_or(false, |t| *t == token) {
           self.token_iter.next();
-          return Some(Ok(Symbol::Terminal(Terminal::Token(token))));
+          Some(Ok(Symbol::Terminal(Terminal::Token(token))))
         } else {
-          return Some(Err(format!(
+          Some(Err(format!(
             "LL1: Expected {:?}, got {:?}",
             token,
             self.token_iter.peek()
-          )));
+          )))
         }
       }
       Symbol::Terminal(Terminal::End) => {
-        if self.token_iter.peek().is_none() {
-          return None;
-        } else {
-          return Some(Err(format!(
-            "LL1: Expected end of input, got {:?}",
-            self.token_iter.peek()
-          )));
-        }
+        self.token_iter.peek()?;
+        Some(Err(format!(
+          "LL1: Expected end of input, got {:?}",
+          self.token_iter.peek()
+        )))
       }
-      top @ _ => {
+      top => {
         let symbols = self.table_lookup(&top);
         if symbols.is_none() {
           return Some(Err(format!("Failed on table lookup: {:?}", top)));
@@ -339,7 +336,7 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
             Symbol::Terminal(Terminal::Epsilon) => false,
             _ => true,
           }));
-        return Some(Ok(top));
+        Some(Ok(top))
       }
     }
   }
@@ -378,7 +375,7 @@ impl ParseTableBuilder {
 
     // Initialise follow with {} for all symbols, except Program which gets {End}.
     for symbol in self.rules.iter().flat_map(|(_, r)| r.iter()) {
-      follow.entry(symbol.clone()).or_insert(HashSet::new());
+      follow.entry(symbol.clone()).or_insert_with(HashSet::new);
     }
     follow
       .get_mut(&Symbol::Program)
@@ -389,7 +386,7 @@ impl ParseTableBuilder {
       let mut updated = false;
       for (nonterminal, production) in self.rules.clone() {
         for p in production.iter() {
-          let first_p = first.get(&p).unwrap().clone();
+          let first_p = first[&p].clone();
           updated |= insert_all(first.get_mut(&nonterminal).unwrap(), first_p);
           if epsilon.contains(&p) {
             updated |= epsilon.insert(nonterminal.clone());
@@ -398,15 +395,15 @@ impl ParseTableBuilder {
           }
         }
 
-        let mut curr_follow = follow.get(&nonterminal).unwrap().clone();
+        let mut curr_follow = follow[&nonterminal].clone();
         for p in production.iter().rev() {
           if p.is_nonterminal() {
             updated |= insert_all(follow.get_mut(&p).unwrap(), curr_follow.clone());
           }
           if epsilon.contains(&p) {
-            insert_all(&mut curr_follow, first.get(&p).unwrap().clone());
+            insert_all(&mut curr_follow, first[&p].clone());
           } else {
-            curr_follow = first.get(&p).unwrap().clone();
+            curr_follow = first[&p].clone();
           }
         }
       }
@@ -418,12 +415,12 @@ impl ParseTableBuilder {
     let mut table = HashMap::new();
     for (symbol, rule) in self.rules {
       let mut first_contains_epsilon = false;
-      for f in first.get(rule.first().unwrap()).unwrap() {
+      for f in &first[rule.first().unwrap()] {
         if *f == Terminal::Epsilon {
           first_contains_epsilon = true;
           continue;
         }
-        let entry = table.entry(symbol.clone()).or_insert(HashMap::new());
+        let entry = table.entry(symbol.clone()).or_insert_with(HashMap::new);
         if entry.get(f).is_some() {
           return Err(format!(
             "Table entry [{:?}, {:?}] contains two rules",
@@ -433,8 +430,8 @@ impl ParseTableBuilder {
         entry.insert(f.clone(), rule.clone());
       }
       if first_contains_epsilon {
-        for f in follow.get(&symbol).unwrap() {
-          let entry = table.entry(symbol.clone()).or_insert(HashMap::new());
+        for f in &follow[&symbol] {
+          let entry = table.entry(symbol.clone()).or_insert_with(HashMap::new);
           if entry.get(f).is_some() {
             return Err(format!(
               "Table entry [{:?}, {:?}] contains two rules",
@@ -445,8 +442,7 @@ impl ParseTableBuilder {
         }
       }
     }
-
-    return Ok(table);
+    Ok(table)
   }
 }
 
@@ -458,7 +454,7 @@ where
   for s in source {
     inserted |= target.insert(s);
   }
-  return inserted;
+  inserted
 }
 
 impl Symbol {

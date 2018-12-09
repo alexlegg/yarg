@@ -1,6 +1,7 @@
+#![allow(clippy::identity_op)]
 use crate::cpu::{Interrupt, TrapHandler};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct JoypadInput {
   pub up: bool,
   pub down: bool,
@@ -27,6 +28,7 @@ impl JoypadInput {
   }
 }
 
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Joypad {
   select_buttons: bool,
   select_directions: bool,

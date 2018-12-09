@@ -1,3 +1,4 @@
+#![allow(clippy::identity_op)]
 use crate::asm::operation::{Address, Condition, Reg};
 use crate::cartridge::Cartridge;
 use crate::joypad::Joypad;
@@ -80,7 +81,6 @@ pub trait TrapHandler {
 impl Cpu {
   pub fn new(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Cpu {
     let has_bootrom = bootrom.is_some();
-    let cartridge = Cartridge::new(rom);
     Cpu {
       a: 0x01,
       f: 0x00,
@@ -96,13 +96,13 @@ impl Cpu {
       wram: vec![vec![0; 0x1000]; 8],
       wram_bank: 1,
       hram: vec![0; 0x7f],
-      bootrom: bootrom,
+      bootrom,
       bootrom_enabled: has_bootrom,
       interrupt_master_enable: false,
       interrupt_enable: 0,
       interrupt_flag: 0,
 
-      cartridge: cartridge,
+      cartridge: Cartridge::new(rom),
       ppu: Ppu::new(),
       timer: Timer::new(),
       joypad: Joypad::new(),
@@ -129,7 +129,7 @@ impl Cpu {
       }
       sp = sp.wrapping_sub(2);
     }
-    println!("");
+    println!();
   }
 
   pub fn set_pc(&mut self, addr: u16) -> Result<(), String> {
@@ -144,7 +144,7 @@ impl Cpu {
       Flag::H => 1 << 5,
       Flag::C => 1 << 4,
     };
-    return (self.f & mask) > 0;
+    (self.f & mask) > 0
   }
 
   pub fn set_flag(&mut self, flag: Flag, val: bool) {
@@ -170,7 +170,6 @@ impl Cpu {
       Reg::E => Ok(self.e),
       Reg::H => Ok(self.h),
       Reg::L => Ok(self.l),
-      //Reg::F => Ok(self.f),
       _ => Err("Bad get_reg8".to_string()),
     }
   }
@@ -184,18 +183,17 @@ impl Cpu {
       Reg::E => self.e = val,
       Reg::H => self.h = val,
       Reg::L => self.l = val,
-      //Reg::F => self.f = val,
       _ => return Err("Bad set_reg8".to_string()),
     }
-    return Ok(());
+    Ok(())
   }
 
   pub fn get_reg16(&self, reg: Reg) -> Result<u16, String> {
     match reg {
-      Reg::AF => Ok(((self.a as u16) << 8) | (self.f as u16)),
-      Reg::BC => Ok(((self.b as u16) << 8) | (self.c as u16)),
-      Reg::DE => Ok(((self.d as u16) << 8) | (self.e as u16)),
-      Reg::HL => Ok(((self.h as u16) << 8) | (self.l as u16)),
+      Reg::AF => Ok((u16::from(self.a) << 8) | u16::from(self.f)),
+      Reg::BC => Ok((u16::from(self.b) << 8) | u16::from(self.c)),
+      Reg::DE => Ok((u16::from(self.d) << 8) | u16::from(self.e)),
+      Reg::HL => Ok((u16::from(self.h) << 8) | u16::from(self.l)),
       Reg::PC => Ok(self.pc),
       Reg::SP => Ok(self.sp),
       _ => Err("Bad get_reg16 register".to_string()),
@@ -232,42 +230,41 @@ impl Cpu {
   }
 
   pub fn read_mem8(&self, addr: u16) -> Result<u8, String> {
-    //println!("read_mem8 {:#06x}", addr);
     if self.bootrom_enabled && addr <= 0xff {
       if let Some(ref bootrom) = self.bootrom {
         return Ok(bootrom[addr as usize]);
       }
-      return Err("Bootrom is enabled but there is no bootrom".to_string());
+      Err("Bootrom is enabled but there is no bootrom".to_string())
     } else if addr <= 0x7fff {
-      return self.cartridge.read(addr);
+      self.cartridge.read(addr)
     } else if addr >= 0x8000 && addr <= 0x9fff {
-      return self.ppu.read(addr);
+      self.ppu.read(addr)
     } else if addr >= 0xa000 && addr <= 0xbfff {
-      return self.cartridge.read(addr);
+      self.cartridge.read(addr)
     } else if addr >= 0xc000 && addr <= 0xcfff {
-      return Ok(self.wram[0][(addr - 0xc000) as usize]);
+      Ok(self.wram[0][(addr - 0xc000) as usize])
     } else if addr >= 0xd000 && addr <= 0xdfff {
-      return Ok(self.wram[self.wram_bank][(addr - 0xd000) as usize]);
+      Ok(self.wram[self.wram_bank][(addr - 0xd000) as usize])
     } else if addr == 0xff00 {
-      return self.joypad.read(addr);
+      self.joypad.read(addr)
     } else if addr >= 0xff04 && addr <= 0xff07 {
-      return self.timer.read(addr);
+      self.timer.read(addr)
     } else if addr >= 0xff40 && addr <= 0xff4b {
-      return self.ppu.read(addr);
+      self.ppu.read(addr)
     } else if addr == 0xff0f {
       // IF - Interrupt Flag
-      return Ok(self.interrupt_flag);
+      Ok(self.interrupt_flag)
     } else if addr >= 0xff80 && addr <= 0xfffe {
-      return Ok(self.hram[(addr - 0xff80) as usize]);
+      Ok(self.hram[(addr - 0xff80) as usize])
     } else if addr == 0xffff {
       // IE - Interrupt Enable
-      return Ok(self.interrupt_enable);
+      Ok(self.interrupt_enable)
     } else if addr >= 0xff00 && addr <= 0xff7f {
       println!("Read IO register {:#06x} as 0", addr);
       // Some IO register
-      return Ok(0);
+      Ok(0)
     } else {
-      return Err(format!("Bad read_mem8 addr: {:#06x}", addr));
+      Err(format!("Bad read_mem8 addr: {:#06x}", addr))
     }
   }
 
@@ -302,7 +299,7 @@ impl Cpu {
       self.ppu.write(addr, val)
     } else if addr == 0xff46 {
       // Handle DMA here
-      self.handle_dma_transfer((val as u16) << 8)
+      self.handle_dma_transfer(u16::from(val) << 8)
     } else if addr >= 0xff47 && addr <= 0xff4b {
       self.ppu.write(addr, val)
     } else if addr == 0xff50 {
@@ -337,9 +334,9 @@ impl Cpu {
   }
 
   pub fn read_mem16(&self, addr: u16) -> Result<u16, String> {
-    let v0 = self.read_mem8(addr)? as u16;
-    let v1 = self.read_mem8(addr + 1)? as u16;
-    return Ok(v1 << 8 | v0);
+    let v0 = u16::from(self.read_mem8(addr)?);
+    let v1 = u16::from(self.read_mem8(addr + 1)?);
+    Ok(v1 << 8 | v0)
   }
 
   pub fn push_stack(&mut self, val: u16) -> Result<(), String> {
@@ -347,7 +344,7 @@ impl Cpu {
     self.sp -= 2;
     let sp = self.sp;
     self.write_mem16(sp, val)?;
-    return Ok(());
+    Ok(())
   }
 
   pub fn pop_stack(&mut self) -> Result<u16, String> {
@@ -355,7 +352,7 @@ impl Cpu {
     let sp = self.sp;
     let val = self.read_mem16(sp)?;
     self.sp += 2;
-    return Ok(val);
+    Ok(val)
   }
 
   pub fn get_address8(&mut self, addr: Address) -> Result<u8, String> {
@@ -371,13 +368,13 @@ impl Cpu {
       }
       Address::ExtendedIndirect(r) => {
         self.tick(1)?;
-        let addr = 0xff00 | (self.get_reg8(r)? as u16);
+        let addr = 0xff00 | u16::from(self.get_reg8(r)?);
         self.read_mem8(addr)
       }
       Address::Register(r) => self.get_reg8(r),
       Address::Extended(e) => {
         self.tick(2)?;
-        let addr: u16 = 0xff00 | (e as u16);
+        let addr: u16 = 0xff00 | u16::from(e);
         self.read_mem8(addr)
       }
       Address::Immediate(addr) => {
@@ -402,12 +399,12 @@ impl Cpu {
       }
       Address::Extended(e) => {
         self.tick(2)?;
-        let addr: u16 = 0xff00 | (e as u16);
+        let addr: u16 = 0xff00 | u16::from(e);
         self.write_mem8(addr, val)
       }
       Address::ExtendedIndirect(r) => {
         self.tick(1)?;
-        let addr = 0xff00 | (self.get_reg8(r)? as u16);
+        let addr = 0xff00 | u16::from(self.get_reg8(r)?);
         self.write_mem8(addr, val)
       }
       _ => Err("Bad set_address8".to_string()),
@@ -434,19 +431,20 @@ impl Cpu {
 
   pub fn active_interrupt(&self) -> Option<Interrupt> {
     if !self.interrupt_master_enable {
-      return None;
+      None
     } else if (1 << 0) & self.interrupt_enable & self.interrupt_flag > 0 {
-      return Some(Interrupt::VBlank);
+      Some(Interrupt::VBlank)
     } else if (1 << 1) & self.interrupt_enable & self.interrupt_flag > 0 {
-      return Some(Interrupt::Serial);
+      Some(Interrupt::Serial)
     } else if (1 << 2) & self.interrupt_enable & self.interrupt_flag > 0 {
-      return Some(Interrupt::Timer);
+      Some(Interrupt::Timer)
     } else if (1 << 3) & self.interrupt_enable & self.interrupt_flag > 0 {
-      return Some(Interrupt::LCDStat);
+      Some(Interrupt::LCDStat)
     } else if (1 << 4) & self.interrupt_enable & self.interrupt_flag > 0 {
-      return Some(Interrupt::Joypad);
+      Some(Interrupt::Joypad)
+    } else {
+      None
     }
-    return None;
   }
 
   fn ack_interrupt(&mut self, irq: Interrupt) {
@@ -468,10 +466,9 @@ impl Cpu {
     };
 
     let irq = self.timer.tick(cycles)?;
-    match irq {
-      Some(Interrupt::Timer) => self.interrupt_flag |= 1 << 2,
-      _ => (),
-    };
+    if let Some(Interrupt::Timer) = irq {
+      self.interrupt_flag |= 1 << 2;
+    }
 
     if self.is_halted
       && !self.interrupt_master_enable

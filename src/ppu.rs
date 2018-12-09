@@ -18,6 +18,7 @@ const LCDC_DISPLAY_ENABLE: u8 = 1 << 7;
 const LCDC_TILE_SELECT: u8 = 1 << 4;
 const LCDC_SPRITE_SIZE: u8 = 1 << 2;
 const LCDC_SPRITE_ENABLE: u8 = 1 << 1;
+
 /*
 const LCDC_WINDOW_TILE_MAP_DISPLAY_SELECT : u8 		= 1 << 6;
 const LCDC_WINDOW_DISPLAY_ENABLE: u8 							= 1 << 5;
@@ -29,7 +30,7 @@ const SPRITE_FLAG_PRIORITY: u8 = 1 << 7;
 const SPRITE_FLAG_Y_FLIP: u8 = 1 << 6;
 const SPRITE_FLAG_X_FLIP: u8 = 1 << 5;
 const SPRITE_FLAG_PALETTE: u8 = 1 << 4;
-const SPRITE_FLAG_BANK: u8 = 1 << 3;
+//const SPRITE_FLAG_BANK: u8 = 1 << 3;
 
 #[derive(Copy, Clone, Debug)]
 enum Mode {
@@ -65,8 +66,8 @@ struct SpriteAttributeTable {
   flags: u8,
 }
 
-impl Ppu {
-  pub fn new() -> Ppu {
+impl Default for Ppu {
+  fn default() -> Ppu {
     Ppu {
       bad_timer: 0,
       lcdc: 0,
@@ -82,6 +83,12 @@ impl Ppu {
       draw_buffer: false,
       tile_data_dirty: false,
     }
+  }
+}
+
+impl Ppu {
+  pub fn new() -> Ppu {
+    Ppu::default()
   }
 
   pub fn should_draw(&mut self) -> bool {
@@ -335,7 +342,7 @@ impl SpriteAttributeTable {
 }
 
 fn bit(v: u8, b: u8) -> u8 {
-  return (v & (1 << b)) >> b;
+  (v & (1 << b)) >> b
 }
 
 fn get_palette_colour(val: u8, palette: u8) -> u32 {
@@ -343,11 +350,11 @@ fn get_palette_colour(val: u8, palette: u8) -> u32 {
     panic!("Bad value to get_colour");
   }
   match (palette >> (val * 2)) & 0b11 {
-    0b00 => 0xffffff,
-    0b01 => 0xc0c0c0,
-    0b10 => 0x969696,
-    0b11 => 0x000000,
-    _ => 0xffffff,
+    0b00 => 0x00ff_ffff,
+    0b01 => 0x00c0_c0c0,
+    0b10 => 0x0096_9696,
+    0b11 => 0x0000_0000,
+    _ => 0x00ff_ffff,
   }
 }
 
@@ -359,6 +366,8 @@ fn put_pixel(screen_buffer: &mut [u8], x: u8, y: u8, colour: u32) {
   screen_buffer[offset + 2] = ((colour >> 16) & 0xff) as u8;
 }
 
+#[allow(clippy::too_many_arguments)]
+// TODO: Take care of this lint
 fn draw_tile_line(
   tile: &[u8; 16],
   x: isize,

@@ -55,12 +55,12 @@ impl Assembler {
     let mut header = Header::new();
     header
       .title
-      .copy_from_slice("test rom\0\0\0\0\0\0\0\0".as_bytes());
+      .copy_from_slice(b"test rom\0\0\0\0\0\0\0\0");
     header.set_header_checksum();
     self.data.splice(0x100..0x14e, header.serialise());
     let mut checksum: u16 = 0;
     for byte in &self.data {
-      checksum = checksum.wrapping_add(*byte as u16);
+      checksum = checksum.wrapping_add(u16::from(*byte));
     }
     self.data[0x14e] = (checksum >> 8) as u8;
     self.data[0x14f] = (checksum & 0xff) as u8;
@@ -202,7 +202,7 @@ fn encode_relative_addr(jump_addr: usize, addr: usize, data: &mut Vec<u8>) -> Re
   let pc = jump_addr as isize;
   let rel = (addr as isize)
     .checked_sub(pc + 1)
-    .ok_or("Bad relative jump".to_string())?;
+    .ok_or_else(|| "Bad relative jump".to_string())?;
   if rel < i8::min_value() as isize || rel > i8::max_value() as isize {
     return Err("Bad relative jump".to_string());
   }

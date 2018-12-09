@@ -5,9 +5,9 @@ use std::io::Write;
 use yarg::emulator::Emulator;
 use yarg::sdl;
 
-fn debugger_cli(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Result<(), String> {
+fn debugger_cli(bootrom: &Option<Vec<u8>>, rom: &[u8]) -> Result<(), String> {
   // TODO: Add reset logic to Emulator so I don't need to clone here.
-  let mut emu = Emulator::new(bootrom.clone(), rom.clone())?;
+  let mut emu = Emulator::new(bootrom.clone(), rom.to_vec());
   loop {
     print!("> ");
     let _ = io::stdout().flush();
@@ -31,7 +31,7 @@ fn debugger_cli(bootrom: Option<Vec<u8>>, rom: Vec<u8>) -> Result<(), String> {
             sdl::init(&mut emu, false);
           }
           Some("reset") | Some("e") => {
-            emu = Emulator::new(bootrom.clone(), rom.clone())?;
+            emu = Emulator::new(bootrom.clone(), rom.to_vec());
           }
           Some("quit") | Some("q") => break,
           _ => println!("Unrecognised command"),
@@ -75,15 +75,15 @@ fn main() -> Result<(), String> {
   } else {
     None
   };
-  let rom_fn = args.last().ok_or("Must specify ROM file".to_string())?;
+  let rom_fn = args.last().ok_or_else(|| "Must specify ROM file".to_string())?;
 
   let rom = fs::read(rom_fn).map_err(|_| "Could not read ROM file".to_string())?;
 
   if debugger {
-    return debugger_cli(bootrom, rom);
+    return debugger_cli(&bootrom, &rom);
   }
 
-  let mut emu = Emulator::new(bootrom, rom)?;
+  let mut emu = Emulator::new(bootrom, rom);
   sdl::init(&mut emu, show_vram);
   Ok(())
 }
