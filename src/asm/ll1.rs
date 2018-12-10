@@ -43,7 +43,7 @@ lazy_static! {
       Statement           := [ Label MaybeInstruction ]
                              [ Instruction ]
                              [ Directive ]
-      Directive           := [ tkn!(Dot) word!("bank") term!(Alphanumeric) ]
+      Directive           := [ tkn!(Dot) word!("section") term!(Alphanumeric) ]
       Label               := [ term!(Alphanumeric) tkn!(Colon) ]
 
       // Operands
@@ -858,8 +858,8 @@ mod test {
   fn directive() {
     let tokens = vec![
       Dot,
-      Word("bank".to_string()),
-      Word("0".to_string()),
+      Word("section".to_string()),
+      Word("1234".to_string()),
       Newline,
     ];
     let parser = Ll1Parser::new(tokens.into_iter());
@@ -870,8 +870,8 @@ mod test {
         Statement,
         Directive,
         Terminal(Token(Dot)),
-        Terminal(Token(Word("bank".to_string()))),
-        Terminal(Token(Word("0".to_string()))),
+        Terminal(Token(Word("section".to_string()))),
+        Terminal(Token(Word("1234".to_string()))),
         Terminal(Token(Newline)),
         Program,
       ])

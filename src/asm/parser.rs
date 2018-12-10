@@ -7,9 +7,14 @@ use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-  Directive(String, String),
+  Directive(Directive),
   Label(String),
   Instruction(Operation<LabelOrAddress>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Directive {
+  Section(usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,8 +124,8 @@ impl<'a> Parser<'a> {
         Ok(Statement::Label(label))
       }
       Symbol::Directive => {
-        let (d, v) = self.match_directive()?;
-        Ok(Statement::Directive(d, v))
+        let directive = self.match_directive()?;
+        Ok(Statement::Directive(directive))
       }
       s => Err(format_err!("Expected a statement, got {:?}", s)),
     }
@@ -132,11 +137,11 @@ impl<'a> Parser<'a> {
     Ok(name)
   }
 
-  fn match_directive(&mut self) -> Result<(String, String), Error> {
+  fn match_directive(&mut self) -> Result<Directive, Error> {
     self.expect_token(Token::Dot)?;
-    let name = self.next_word()?;
-    let value = self.next_word()?;
-    Ok((name, value))
+    self.expect_word("section")?;
+    let value = self.match_constant()?;
+    Ok(Directive::Section(value))
   }
 
   fn match_instruction(&mut self) -> Result<Operation<LabelOrAddress>, Error> {
@@ -500,6 +505,7 @@ mod test {
   use super::*;
   use crate::asm::operation::Address::*;
   use crate::asm::operation::Operation::*;
+  use crate::asm::parser::Directive::*;
   use crate::asm::parser::Statement::*;
 
   #[test]
@@ -603,12 +609,9 @@ mod test {
 
   #[test]
   fn directive() {
-    let input = ".bank 0\n".to_string();
+    let input = ".section 1234\n".to_string();
     let parser = Parser::new(input.chars());
-    assert_eq!(
-      parser.parse(),
-      Ok(vec![Directive("bank".to_string(), "0".to_string())])
-    );
+    assert_eq!(parser.parse(), Ok(vec![Directive(Section(1234))]));
   }
 
   #[test]

@@ -1,6 +1,6 @@
 use crate::asm::cartridge::Header;
 use crate::asm::operation::{Address, Condition, Operation, Reg};
-use crate::asm::parser::{LabelOrAddress, Statement};
+use crate::asm::parser::{Directive, LabelOrAddress, Statement};
 use std::collections::HashMap;
 
 type AddrEncodingFn = Fn(usize, &mut Vec<u8>) -> Result<(), String>;
@@ -10,6 +10,8 @@ struct Assembler {
   cur: usize,
   labels: HashMap<String, usize>,
   unresolved: HashMap<String, Vec<Box<AddrEncodingFn>>>,
+  current_origin: usize,
+  sections: Vec<(usize, usize)>,
 }
 
 pub fn assemble(statements: Vec<Statement>) -> Result<Vec<u8>, String> {
@@ -23,6 +25,8 @@ impl Assembler {
       cur: 0x150,
       labels: HashMap::new(),
       unresolved: HashMap::new(),
+      current_origin: 0x150,
+      sections: Vec::new(),
     }
   }
 
@@ -40,8 +44,8 @@ impl Assembler {
           }
           self.labels.insert(s, self.cur);
         }
-        Statement::Directive(_, _) => {
-          return Err("Directive!?".to_string());
+        Statement::Directive(Directive::Section(addr)) => {
+          self.handle_section(addr)?;
         }
       }
     }
@@ -170,6 +174,45 @@ impl Assembler {
     }
     Ok(())
   }
+
+  fn check_section(&self, new_start: usize, new_end: Option<usize>) -> Option<(usize, usize)> {
+    for (start, end) in &self.sections {
+      if new_start >= *start && new_start <= *end {
+        return Some((*start, *end));
+      }
+      if let Some(ne) = new_end {
+        if ne >= *start && ne <= *end {
+          return Some((*start, *end));
+        }
+      }
+    }
+    None
+  }
+
+  fn handle_section(&mut self, addr: usize) -> Result<(), String> {
+    let start = self.current_origin;
+    let end = self.cur - 1;
+    if start > end {
+      return Err(format!("Bad section: start {:?} end {:?}", start, end));
+    } else if start != end {
+      if let Some((overlap_start, overlap_end)) = self.check_section(start, Some(end)) {
+        return Err(format!(
+          "Section <{:?}, {:?}> overlaps with <{:?}, {:?}>",
+          start, end, overlap_start, overlap_end
+        ));
+      }
+      self.sections.push((start, end));
+    }
+    if let Some((overlap_start, overlap_end)) = self.check_section(addr, None) {
+      return Err(format!(
+        "Section at {:?} overlaps with <{:?}, {:?}>",
+        addr, overlap_start, overlap_end
+      ));
+    }
+    self.current_origin = addr;
+    self.cur = addr;
+    Ok(())
+  }
 }
 
 fn encode_reg(reg: Reg) -> u8 {
@@ -214,6 +257,7 @@ mod test {
   use crate::asm::operation::Condition::*;
   use crate::asm::operation::Operation::*;
   use crate::asm::operation::Reg;
+  use crate::asm::parser::Directive::*;
   use crate::asm::parser::LabelOrAddress::*;
   use crate::asm::parser::Statement::*;
 
@@ -276,5 +320,25 @@ mod test {
     assert_eq!(rom[0x151], (2 as i8) as u8);
     assert_eq!(rom[0x152], 0x10);
     assert_eq!(rom[0x153], 0x10);
+  }
+
+  #[test]
+  fn section() {
+    let instructions = vec![
+      Instruction(Stop),
+      Instruction(Halt),
+      Directive(Section(0x300)),
+      Instruction(DisableInterrupts),
+      Instruction(EnableInterrupts),
+    ];
+    let result = super::assemble(instructions);
+    assert!(result.is_ok(), "Result not ok: {:?}", result);
+    let rom = result.unwrap();
+    assert_eq!(rom[0x150], 0x10);
+    assert_eq!(rom[0x151], 0x76);
+    assert_eq!(rom[0x152], 0x00);
+    assert_eq!(rom[0x300], 0xf3);
+    assert_eq!(rom[0x301], 0xfb);
+    assert_eq!(rom[0x302], 0x00);
   }
 }
