@@ -100,10 +100,20 @@ impl Assembler {
       Operation::ComplementCarry => {
         self.insert(0x3f);
       }
+      Operation::Jump(Condition::Unconditional, LabelOrAddress::AbsoluteLabel(label)) => {
+        self.insert(0xc3);
+        let jump_addr = self.cur;
+        self.insert(0u8);
+        self.insert(0u8);
+        self.encode_label(
+          move |addr, data| encode_absolute_addr(jump_addr, addr, data),
+          label,
+        )?;
+      }
       Operation::Jump(Condition::Unconditional, LabelOrAddress::RelativeLabel(label)) => {
         self.insert(0x18);
         let jump_addr = self.cur;
-        self.insert(0 as u8);
+        self.insert(0u8);
         self.encode_label(
           move |addr, data| encode_relative_addr(jump_addr, addr, data),
           label,
@@ -251,6 +261,12 @@ fn encode_relative_addr(jump_addr: usize, addr: usize, data: &mut Vec<u8>) -> Re
   Ok(())
 }
 
+fn encode_absolute_addr(jump_addr: usize, addr: usize, data: &mut Vec<u8>) -> Result<(), String> {
+  data[jump_addr] = addr as u8;
+  data[jump_addr + 1] = (addr >> 8) as u8;
+  Ok(())
+}
+
 #[cfg(test)]
 mod test {
   use crate::asm::operation::Address::*;
@@ -320,6 +336,42 @@ mod test {
     assert_eq!(rom[0x151], (2 as i8) as u8);
     assert_eq!(rom[0x152], 0x10);
     assert_eq!(rom[0x153], 0x10);
+  }
+
+  #[test]
+  fn jump_backwards_absolute() {
+    let instructions = vec![
+      Label("abcd".to_string()),
+      Instruction(Stop),
+      Instruction(Stop),
+      Instruction(Jump(Unconditional, AbsoluteLabel("abcd".to_string()))),
+    ];
+    let result = super::assemble(instructions);
+    assert!(result.is_ok(), "Result not ok: {:?}", result);
+    let rom = result.unwrap();
+    assert_eq!(rom[0x150], 0x10);
+    assert_eq!(rom[0x151], 0x10);
+    assert_eq!(rom[0x152], 0xc3);
+    assert_eq!(rom[0x153], 0x50);
+    assert_eq!(rom[0x154], 0x01);
+  }
+
+  #[test]
+  fn jump_forwards_absolute() {
+    let instructions = vec![
+      Instruction(Jump(Unconditional, AbsoluteLabel("abcd".to_string()))),
+      Instruction(Stop),
+      Instruction(Stop),
+      Label("abcd".to_string()),
+    ];
+    let result = super::assemble(instructions);
+    assert!(result.is_ok(), "Result not ok: {:?}", result);
+    let rom = result.unwrap();
+    assert_eq!(rom[0x150], 0xc3);
+    assert_eq!(rom[0x151], 0x55);
+    assert_eq!(rom[0x152], 0x01);
+    assert_eq!(rom[0x153], 0x10);
+    assert_eq!(rom[0x154], 0x10);
   }
 
   #[test]

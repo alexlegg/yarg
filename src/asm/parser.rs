@@ -316,19 +316,13 @@ impl<'a> Parser<'a> {
 
       // Jump and call operations
       Symbol::Call => Err(format_err!("Not implemented")),
-      Symbol::Jp => Err(format_err!("Not implemented")),
+      Symbol::Jp => {
+        self.expect_word("jp")?;
+        self.match_jump(false)
+      }
       Symbol::Jr => {
         self.expect_word("jr")?;
-        self.expect(&Symbol::MaybeCondition)?;
-        if self.maybe_expect(&Symbol::Condition)? {
-          let condition = self.match_condition()?;
-          self.expect_token(Token::Comma)?;
-          let source = self.match_jr_operand()?;
-          Ok(Operation::Jump(condition, source))
-        } else {
-          let source = self.match_jr_operand()?;
-          Ok(Operation::Jump(Condition::Unconditional, source))
-        }
+        self.match_jump(true)
       }
       Symbol::Ret => {
         self.expect_word("ret")?;
@@ -420,9 +414,17 @@ impl<'a> Parser<'a> {
     )
   }
 
-  fn match_operand<F, G>(&mut self, f: F, g: G) -> Result<LabelOrAddress, Error>
+  fn match_jp_operand(&mut self) -> Result<LabelOrAddress, Error> {
+    self.match_operand(
+      |constant| LabelOrAddress::Resolved(Address::Immediate(constant)),
+      LabelOrAddress::AbsoluteLabel,
+    )
+  }
+
+  fn match_operand<T, F, G>(&mut self, f: F, g: G) -> Result<LabelOrAddress, Error>
   where
-    F: FnOnce(u8) -> LabelOrAddress,
+    T: std::str::FromStr,
+    F: FnOnce(T) -> LabelOrAddress,
     G: FnOnce(String) -> LabelOrAddress,
   {
     match self.next_symbol()? {
@@ -480,6 +482,23 @@ impl<'a> Parser<'a> {
       "nz" => Ok(Condition::NonZero),
       s => Err(format_err!("Expected condition, got {:?}", s)),
     }
+  }
+
+  fn match_jump(&mut self, relative: bool) -> Result<Operation<LabelOrAddress>, Error> {
+    self.expect(&Symbol::MaybeCondition)?;
+    let condition = if self.maybe_expect(&Symbol::Condition)? {
+      let c = self.match_condition()?;
+      self.expect_token(Token::Comma)?;
+      c
+    } else {
+      Condition::Unconditional
+    };
+    let source = if relative {
+      self.match_jr_operand()?
+    } else {
+      self.match_jp_operand()?
+    };
+    Ok(Operation::Jump(condition, source))
   }
 }
 
