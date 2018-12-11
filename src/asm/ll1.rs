@@ -573,6 +573,44 @@ mod test {
   }
 
   #[test]
+  fn hex_number() {
+    let tokens = vec![Word("rst".to_string()), Word("0xabcd".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Rst,
+        Terminal(Token(Word("rst".to_string()))),
+        Terminal(Token(Word("0xabcd".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
+  fn binary_number() {
+    let tokens = vec![Word("rst".to_string()), Word("0b1010".to_string()), Newline];
+    let parser = Ll1Parser::new(tokens.into_iter());
+    assert_eq!(
+      parser.parse(),
+      Ok(vec![
+        Program,
+        Statement,
+        Instruction,
+        Rst,
+        Terminal(Token(Word("rst".to_string()))),
+        Terminal(Token(Word("0b1010".to_string()))),
+        Terminal(Token(Newline)),
+        Program,
+      ])
+    );
+  }
+
+  #[test]
   fn number_and_operand() {
     let tokens = vec![
       Word("set".to_string()),

@@ -2,6 +2,7 @@ use crate::asm::lexer::{Lexer, Token};
 use crate::asm::ll1::{Ll1Parser, Symbol, Terminal};
 use crate::asm::operation::{Address, Condition, Operation, Reg};
 use failure::*;
+use num_traits::Num;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -423,7 +424,7 @@ impl<'a> Parser<'a> {
 
   fn match_operand<T, F, G>(&mut self, f: F, g: G) -> Result<LabelOrAddress, Error>
   where
-    T: std::str::FromStr,
+    T: Num,
     F: FnOnce(T) -> LabelOrAddress,
     G: FnOnce(String) -> LabelOrAddress,
   {
@@ -447,12 +448,19 @@ impl<'a> Parser<'a> {
 
   fn match_constant<T>(&mut self) -> Result<T, Error>
   where
-    T: std::str::FromStr,
+    T: Num,
   {
-    self
-      .next_word()?
-      .parse::<T>()
-      .map_err(|_| format_err!("Failed to parse constant"))
+    let word = self.next_word()?;
+    if word.starts_with("0x") {
+      T::from_str_radix(&word[2..], 16)
+    } else if word.ends_with('h') {
+      T::from_str_radix(&word[..word.len() - 1], 16)
+    } else if word.starts_with("0b") {
+      T::from_str_radix(&word[2..], 2)
+    } else {
+      T::from_str_radix(&word, 10)
+    }
+    .map_err(|_| format_err!("Failed to parse constant"))
   }
 
   fn match_register(&mut self) -> Result<Reg, Error> {
@@ -562,6 +570,18 @@ mod test {
     let input = "rst 8\n".to_string();
     let parser = Parser::new(input.chars());
     assert_eq!(parser.parse(), Ok(vec![Instruction(Reset(8))]));
+
+    let input = "rst 0xabcd\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(parser.parse(), Ok(vec![Instruction(Reset(0xabcd))]));
+
+    let input = "rst aB4Dh\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(parser.parse(), Ok(vec![Instruction(Reset(0xab4d))]));
+
+    let input = "rst 0b0110\n".to_string();
+    let parser = Parser::new(input.chars());
+    assert_eq!(parser.parse(), Ok(vec![Instruction(Reset(0b0110))]));
   }
 
   #[test]

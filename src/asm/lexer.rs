@@ -22,7 +22,17 @@ impl Token {
 
   pub fn is_numeric_word(&self) -> bool {
     match self {
-      Token::Word(s) => s.chars().all(char::is_numeric),
+      Token::Word(s) => {
+        if s.starts_with("0x") {
+          s[2..].chars().all(|c| c.is_digit(16))
+        } else if s.ends_with('h') {
+          s[..s.len() - 1].chars().all(|c| c.is_digit(16))
+        } else if s.starts_with("0b") {
+          s[2..].chars().all(|c| c.is_digit(2))
+        } else {
+          s.chars().all(|c| c.is_digit(10))
+        }
+      }
       _ => false,
     }
   }
