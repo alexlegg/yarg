@@ -151,14 +151,20 @@ impl<'a> Parser<'a> {
       Symbol::Adc => {
         self.expect_word("adc")?;
         self.expect(&Symbol::Operand)?;
+        self.match_data_operand()?;
+        self.expect_token(Token::Comma)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
-        Ok(Operation::And(source))
+        Ok(Operation::AddCarry(source))
       }
       Symbol::Add => {
         self.expect_word("add")?;
         self.expect(&Symbol::Operand)?;
+        self.match_data_operand()?;
+        self.expect_token(Token::Comma)?;
+        self.expect(&Symbol::Operand)?;
         let source = self.match_data_operand()?;
-        Ok(Operation::And(source))
+        Ok(Operation::Add(source))
       }
       Symbol::And => {
         self.expect_word("and")?;

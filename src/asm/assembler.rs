@@ -100,25 +100,6 @@ impl Assembler {
       Operation::ComplementCarry => {
         self.insert(0x3f);
       }
-      Operation::Jump(Condition::Unconditional, LabelOrAddress::AbsoluteLabel(label)) => {
-        self.insert(0xc3);
-        let jump_addr = self.cur;
-        self.insert(0u8);
-        self.insert(0u8);
-        self.encode_label(
-          move |addr, data| encode_absolute_addr(jump_addr, addr, data),
-          label,
-        )?;
-      }
-      Operation::Jump(Condition::Unconditional, LabelOrAddress::RelativeLabel(label)) => {
-        self.insert(0x18);
-        let jump_addr = self.cur;
-        self.insert(0u8);
-        self.encode_label(
-          move |addr, data| encode_relative_addr(jump_addr, addr, data),
-          label,
-        )?;
-      }
       Operation::SetCarry => {
         self.insert(0x37);
       }
@@ -159,11 +140,70 @@ impl Assembler {
       Operation::Decrement(LabelOrAddress::Resolved(Address::Register(r))) => {
         self.insert(0x05 | (encode_reg(r) << 3));
       }
+      Operation::AddCarry(LabelOrAddress::Resolved(Address::Register(source))) => {
+        self.insert(0x88 | encode_reg(source));
+      }
+      Operation::Compare(LabelOrAddress::Resolved(Address::Register(source))) => {
+        self.insert(0xb8 | encode_reg(source));
+      }
+      Operation::Compare(LabelOrAddress::Resolved(Address::Data8(source))) => {
+        self.insert(0xfe);
+        self.insert(source);
+      }
+      Operation::Jump(condition, address) => self.encode_jump(condition, address)?,
       _ => {
         return Err(format!("Unrecognised operation {:?}", operation));
       }
     }
     Ok(())
+  }
+
+  fn encode_jump(&mut self, condition : Condition, target : LabelOrAddress) -> Result<(), String> {
+    let relative = match target {
+      LabelOrAddress::AbsoluteLabel(_) => Ok(false),
+      LabelOrAddress::RelativeLabel(_) => Ok(true),
+      LabelOrAddress::Resolved(Address::Relative(_)) => Ok(true),
+      LabelOrAddress::Resolved(Address::Immediate(_)) => Ok(false),
+      _ => Err("Invalid jump address".to_string()),
+    }?;
+    if let Condition::Unconditional = condition {
+      if relative {
+        self.insert(0x18);
+      } else {
+        self.insert(0xc3);
+      }
+    } else if relative {
+      self.insert(0x28 | encode_condition(condition) << 3);
+    } else {
+      self.insert(0xca | encode_condition(condition) << 3);
+    }
+    match target {
+      LabelOrAddress::AbsoluteLabel(label) => {
+        let jump_addr = self.cur;
+        self.insert(0u8);
+        self.insert(0u8);
+        self.encode_label(
+          move |addr, data| encode_absolute_addr(jump_addr, addr, data),
+          label,
+        )
+      }
+      LabelOrAddress::RelativeLabel(label) => {
+        let jump_addr = self.cur;
+        self.insert(0u8);
+        self.encode_label(
+          move |addr, data| encode_relative_addr(jump_addr, addr, data),
+          label,
+        )
+      }
+      LabelOrAddress::Resolved(Address::Immediate(addr)) => {
+        encode_absolute_addr(self.cur, addr as usize, &mut self.data)
+      }
+      LabelOrAddress::Resolved(Address::Relative(addr)) => {
+        self.insert(addr);
+        Ok(())
+      }
+      _ => Err("Unimplemented".to_string())
+    }
   }
 
   fn encode_label<F: 'static>(&mut self, encoding_fn: F, label: String) -> Result<(), String>
