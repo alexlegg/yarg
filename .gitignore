@@ -4,3 +4,4 @@
 /roms/
 SDL2.dll
 *.sublime-*
+tests/**/*.gb
