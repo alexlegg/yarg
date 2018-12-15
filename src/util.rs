@@ -3,7 +3,7 @@ pub fn bit(index: u8, val: u8) -> u8 {
 }
 
 pub fn bit_bool(index: u8, val: u8) -> bool {
-	bit(index, val) > 0
+  bit(index, val) > 0
 }
 
 pub fn bits(high: u8, low: u8, val: u8) -> u8 {

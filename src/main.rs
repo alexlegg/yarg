@@ -86,6 +86,7 @@ fn main() -> Result<(), String> {
   }
 
   let mut emu = Emulator::new(bootrom, rom);
+  println!("{:?}", show_vram);
   sdl::init(&mut emu, show_vram);
   Ok(())
 }

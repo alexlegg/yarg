@@ -14,14 +14,6 @@ const HORIZONTAL_LINE_CYCLES: u64 = OAM_SEARCH_CYCLES + PIXEL_TRANSFER_CYCLES + 
 const V_BLANK_LINES: u64 = 10;
 const VERTICAL_LINE_CYCLES: u64 = HORIZONTAL_LINE_CYCLES * (SCREEN_HEIGHT + V_BLANK_LINES);
 
-#[derive(Copy, Clone, Debug)]
-enum Mode {
-  HBlank,
-  VBlank,
-  OamSearch,
-  PixelTransfer,
-}
-
 /// LCD Control Register
 ///
 /// Bit 7 - LCD Controller Operation Stop Flag (0=Off, 1=On)
@@ -36,15 +28,15 @@ enum Mode {
 /// (Source: GameBoy Programming Manual)
 #[derive(Copy, Clone, Debug, Default)]
 struct LcdControl {
-  register: u8
+  register: u8,
 }
 
 impl LcdControl {
-  fn enabled(&self) -> bool {
+  fn enabled(self) -> bool {
     util::bit_bool(7, self.register)
   }
 
-  fn sprite_size(&self) -> u8 {
+  fn sprite_size(self) -> u8 {
     if util::bit(2, self.register) == 0 {
       8
     } else {
@@ -52,23 +44,81 @@ impl LcdControl {
     }
   }
 
-  fn tileset(&self) -> u8 {
+  fn tileset(self) -> u8 {
     util::bit(4, self.register)
   }
 
-  fn sprites_enabled(&self) -> bool {
+  fn sprites_enabled(self) -> bool {
     util::bit_bool(1, self.register)
   }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum Mode {
+  HBlank = 0b00,
+  VBlank = 0b01,
+  OamSearch = 0b10,
+  PixelTransfer = 0b11,
+}
+
+/// LCD Status Register
+///
+/// Bit 6 - LYC == LY Interrupt
+/// Bit 5 - Mode 2 (OamSearch) Interrupt
+/// Bit 4 - Mode 1 (VBlank) Interrupt
+/// Bit 3 - Mode 0 (HBlank) Interrupt
+/// Bit 2 - Match flag LYC == LCDC LY
+/// Bits 1..0 - Mode
+/// (Source: GameBoy Programming Manual)
+#[derive(Copy, Clone, Debug, Default)]
+struct LcdStatus {
+  register: u8,
+}
+
+impl LcdStatus {
+  fn write(&mut self, val: u8) {
+    self.register = (val & 0xf0) | (self.register & 0x0f);
+  }
+
+  fn set_mode(&mut self, mode: Mode) {
+    self.register = (self.register & 0xf0) | (mode as u8);
+  }
+
+  fn set_coincidence(&mut self, val: bool) {
+    if val {
+      self.register |= 0b0000_0100;
+    } else {
+      self.register &= !(0b0000_0100);
+    }
+  }
+
+  fn coincidence_interrupt_enabled(self) -> bool {
+    util::bit_bool(6, self.register)
+  }
+
+  fn oam_search_interrupt_enabled(self) -> bool {
+    util::bit_bool(5, self.register)
+  }
+
+  fn vblank_interrupt_enabled(self) -> bool {
+    util::bit_bool(4, self.register)
+  }
+
+  fn hblank_interrupt_enabled(self) -> bool {
+    util::bit_bool(3, self.register)
+  }
+}
+
 pub struct Ppu {
-  bad_timer: u64,
+  cycles: u64,
   lcdc: LcdControl,
+  status: LcdStatus,
   bg_palette: u8,
   tiles: Vec<[u8; 16]>,
   bg_tile_map: Vec<[u8; 32]>,
   scroll_x: u8,
   scroll_y: u8,
+  ly_compare: u8,
   sprite_attributes: Vec<SpriteAttributeTable>,
   sprite_palettes: [u8; 2],
 
@@ -111,19 +161,19 @@ impl SpriteAttributeTable {
     }
   }
 
-  fn sprite_priority(&self) -> bool {
+  fn sprite_priority(self) -> bool {
     util::bit_bool(7, self.flags)
   }
 
-  fn vertical_flip(&self) -> bool {
+  fn vertical_flip(self) -> bool {
     util::bit_bool(6, self.flags)
   }
 
-  fn horizonal_flip(&self) -> bool {
+  fn horizonal_flip(self) -> bool {
     util::bit_bool(5, self.flags)
   }
 
-  fn palette(&self) -> usize {
+  fn palette(self) -> usize {
     usize::from(util::bit(4, self.flags))
   }
 }
@@ -131,13 +181,15 @@ impl SpriteAttributeTable {
 impl Default for Ppu {
   fn default() -> Ppu {
     Ppu {
-      bad_timer: 0,
+      cycles: 0,
       lcdc: LcdControl::default(),
+      status: LcdStatus::default(),
       bg_palette: 0,
       tiles: vec![[0; 16]; 384],
       bg_tile_map: vec![[0; 32]; 32],
       scroll_x: 0,
       scroll_y: 0,
+      ly_compare: 0,
       sprite_attributes: vec![SpriteAttributeTable::new(); 40],
       sprite_palettes: [0; 2],
       screen_buffer: Box::new([0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE]),
@@ -160,7 +212,6 @@ impl Ppu {
       false
     }
   }
-
 
   fn draw_line(&mut self, y: u8) {
     // First draw the background
@@ -256,23 +307,8 @@ impl Ppu {
     Some(buffer)
   }
 
-  fn mode(&self) -> Mode {
-    // TODO Probably faster to just store the mode and update in tick().
-    if !self.lcdc.enabled() {
-      return Mode::HBlank;
-    }
-    if self.bad_timer > SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
-      return Mode::VBlank;
-    }
-
-    let horizontal_cycles = self.bad_timer % HORIZONTAL_LINE_CYCLES;
-    if horizontal_cycles < OAM_SEARCH_CYCLES {
-      Mode::OamSearch
-    } else if horizontal_cycles - OAM_SEARCH_CYCLES < PIXEL_TRANSFER_CYCLES {
-      Mode::PixelTransfer
-    } else {
-      Mode::HBlank
-    }
+  fn ly(&self) -> u8 {
+    (self.cycles / HORIZONTAL_LINE_CYCLES) as u8
   }
 }
 
@@ -290,19 +326,11 @@ impl TrapHandler for Ppu {
 
     match addr {
       0xff40 => Ok(self.lcdc.register),
-      0xff41 => {
-        // STAT
-        let val = match self.mode() {
-          Mode::HBlank => 0b00,
-          Mode::VBlank => 0b01,
-          Mode::OamSearch => 0b10,
-          Mode::PixelTransfer => 0b11,
-        };
-        Ok(val)
-      }
+      0xff41 => Ok(self.status.register),
       0xff42 => Ok(self.scroll_x),
       0xff43 => Ok(self.scroll_y),
-      0xff44 => Ok((self.bad_timer / HORIZONTAL_LINE_CYCLES) as u8),
+      0xff44 => Ok(self.ly()),
+      0xff45 => Ok(self.ly_compare),
       0xff47 => Ok(self.bg_palette),
       0xff48 => Ok(self.sprite_palettes[0]),
       0xff49 => Ok(self.sprite_palettes[1]),
@@ -315,15 +343,16 @@ impl TrapHandler for Ppu {
       let previously_enabled = self.lcdc.enabled();
       self.lcdc.register = val;
       if !previously_enabled && self.lcdc.enabled() {
-        self.bad_timer = 0;
+        self.cycles = 0;
       }
     } else if addr == 0xff41 {
-      println!("write to STAT {:x}", val);
-    //unimplemented!("write to stat");
+      self.status.write(val);
     } else if addr == 0xff42 {
       self.scroll_x = val;
     } else if addr == 0xff43 {
       self.scroll_y = val;
+    } else if addr == 0xff45 {
+      self.ly_compare = val;
     } else if addr == 0xff47 {
       self.bg_palette = val;
     } else if addr == 0xff48 {
@@ -355,22 +384,51 @@ impl TrapHandler for Ppu {
 
   fn tick(&mut self, cycles: u16) -> Result<Option<Interrupt>, String> {
     if !self.lcdc.enabled() {
+      self.status.set_mode(Mode::HBlank);
       return Ok(None);
     }
     let mut interrupt = None;
     for _ in 0..cycles {
-      self.bad_timer += 1;
-      self.bad_timer %= VERTICAL_LINE_CYCLES;
+      self.cycles += 1;
+      self.cycles %= VERTICAL_LINE_CYCLES;
 
-      // Draw line on last pixel transfer cycle
-      if self.bad_timer % HORIZONTAL_LINE_CYCLES == OAM_SEARCH_CYCLES + PIXEL_TRANSFER_CYCLES - 1
-        && self.bad_timer < SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES
-      {
-        let y = (self.bad_timer / HORIZONTAL_LINE_CYCLES) as u8;
-        self.draw_line(y);
+      // Update mode and trigger interrupts.
+      if self.cycles > SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
+        self.status.set_mode(Mode::VBlank);
+        if self.status.vblank_interrupt_enabled() {
+          interrupt = Some(Interrupt::LCDStat);
+        }
+      }
+      let horizontal_cycles = self.cycles % HORIZONTAL_LINE_CYCLES;
+      if horizontal_cycles < OAM_SEARCH_CYCLES {
+        self.status.set_mode(Mode::OamSearch);
+        if self.status.oam_search_interrupt_enabled() {
+          interrupt = Some(Interrupt::LCDStat);
+        }
+      } else if horizontal_cycles - OAM_SEARCH_CYCLES < PIXEL_TRANSFER_CYCLES {
+        self.status.set_mode(Mode::PixelTransfer);
+      } else {
+        self.status.set_mode(Mode::HBlank);
+        if self.status.hblank_interrupt_enabled() {
+          interrupt = Some(Interrupt::LCDStat);
+        }
       }
 
-      if self.bad_timer == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
+      let coincidence = self.ly() == self.ly_compare;
+      self.status.set_coincidence(coincidence);
+      if coincidence && self.status.coincidence_interrupt_enabled() {
+        interrupt = Some(Interrupt::LCDStat);
+      }
+
+      // Draw line on last pixel transfer cycle
+      if horizontal_cycles == OAM_SEARCH_CYCLES + PIXEL_TRANSFER_CYCLES - 1
+        && self.cycles < SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES
+      {
+        let ly = self.ly();
+        self.draw_line(ly);
+      }
+
+      if self.cycles == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
         interrupt = Some(Interrupt::VBlank);
         self.draw_buffer = true;
         self.tile_data_dirty = true;

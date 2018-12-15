@@ -16,18 +16,18 @@ pub enum Flag {
 #[derive(Copy, Clone, Debug)]
 pub enum Interrupt {
   Joypad,
-  LCDStat,
-  Timer,
   Serial,
+  Timer,
+  LCDStat,
   VBlank,
 }
 
 fn interrupt_handler_addr(irq: Interrupt) -> u16 {
   match irq {
     Interrupt::Joypad => 0x60,
-    Interrupt::LCDStat => 0x58,
+    Interrupt::Serial => 0x58,
     Interrupt::Timer => 0x50,
-    Interrupt::Serial => 0x48,
+    Interrupt::LCDStat => 0x48,
     Interrupt::VBlank => 0x40,
   }
 }
@@ -432,16 +432,16 @@ impl Cpu {
   pub fn active_interrupt(&self) -> Option<Interrupt> {
     if !self.interrupt_master_enable {
       None
-    } else if (1 << 0) & self.interrupt_enable & self.interrupt_flag > 0 {
-      Some(Interrupt::VBlank)
-    } else if (1 << 1) & self.interrupt_enable & self.interrupt_flag > 0 {
+    } else if (1 << 4) & self.interrupt_enable & self.interrupt_flag > 0 {
+      Some(Interrupt::Joypad)
+    } else if (1 << 3) & self.interrupt_enable & self.interrupt_flag > 0 {
       Some(Interrupt::Serial)
     } else if (1 << 2) & self.interrupt_enable & self.interrupt_flag > 0 {
       Some(Interrupt::Timer)
-    } else if (1 << 3) & self.interrupt_enable & self.interrupt_flag > 0 {
+    } else if (1 << 1) & self.interrupt_enable & self.interrupt_flag > 0 {
       Some(Interrupt::LCDStat)
-    } else if (1 << 4) & self.interrupt_enable & self.interrupt_flag > 0 {
-      Some(Interrupt::Joypad)
+    } else if (1 << 0) & self.interrupt_enable & self.interrupt_flag > 0 {
+      Some(Interrupt::VBlank)
     } else {
       None
     }
@@ -450,9 +450,9 @@ impl Cpu {
   fn ack_interrupt(&mut self, irq: Interrupt) {
     match irq {
       Interrupt::Joypad => self.interrupt_flag &= !(1 << 4),
-      Interrupt::LCDStat => self.interrupt_flag &= !(1 << 3),
+      Interrupt::Serial => self.interrupt_flag &= !(1 << 3),
       Interrupt::Timer => self.interrupt_flag &= !(1 << 2),
-      Interrupt::Serial => self.interrupt_flag &= !(1 << 1),
+      Interrupt::LCDStat => self.interrupt_flag &= !(1 << 1),
       Interrupt::VBlank => self.interrupt_flag &= !(1 << 0),
     }
   }
@@ -461,7 +461,7 @@ impl Cpu {
     let irq = self.ppu.tick(cycles)?;
     match irq {
       Some(Interrupt::VBlank) => self.interrupt_flag |= 1 << 0,
-      Some(Interrupt::LCDStat) => self.interrupt_flag |= 1 << 4,
+      Some(Interrupt::LCDStat) => self.interrupt_flag |= 1 << 1,
       _ => (),
     };
 
