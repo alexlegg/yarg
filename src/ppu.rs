@@ -1,6 +1,6 @@
 use crate::cpu::Interrupt;
 use crate::cpu::TrapHandler;
-use crate::util::bit_mask;
+use crate::util;
 
 const SCREEN_WIDTH: u64 = 160;
 const SCREEN_HEIGHT: u64 = 144;
@@ -14,24 +14,6 @@ const HORIZONTAL_LINE_CYCLES: u64 = OAM_SEARCH_CYCLES + PIXEL_TRANSFER_CYCLES + 
 const V_BLANK_LINES: u64 = 10;
 const VERTICAL_LINE_CYCLES: u64 = HORIZONTAL_LINE_CYCLES * (SCREEN_HEIGHT + V_BLANK_LINES);
 
-const LCDC_DISPLAY_ENABLE: u8 = 1 << 7;
-const LCDC_TILE_SELECT: u8 = 1 << 4;
-const LCDC_SPRITE_SIZE: u8 = 1 << 2;
-const LCDC_SPRITE_ENABLE: u8 = 1 << 1;
-
-/*
-const LCDC_WINDOW_TILE_MAP_DISPLAY_SELECT : u8 		= 1 << 6;
-const LCDC_WINDOW_DISPLAY_ENABLE: u8 							= 1 << 5;
-const LCDC_BG_TILE_MAP_DISPLAY_SELECT : u8				= 1 << 3;
-const LCDC_DISPLAY_PRIORITY : u8									= 1 << 0;
-*/
-
-const SPRITE_FLAG_PRIORITY: u8 = 1 << 7;
-const SPRITE_FLAG_Y_FLIP: u8 = 1 << 6;
-const SPRITE_FLAG_X_FLIP: u8 = 1 << 5;
-const SPRITE_FLAG_PALETTE: u8 = 1 << 4;
-//const SPRITE_FLAG_BANK: u8 = 1 << 3;
-
 #[derive(Copy, Clone, Debug)]
 enum Mode {
   HBlank,
@@ -40,17 +22,55 @@ enum Mode {
   PixelTransfer,
 }
 
+/// LCD Control Register
+///
+/// Bit 7 - LCD Controller Operation Stop Flag (0=Off, 1=On)
+/// Bit 6 - Window Code Area Selection Flag (0=9800h-9BFFh, 1=9C00h-9FFFh)
+/// Bit 5 - Windowing On Flag (0=Disabled, 1=Enabled)
+/// Bit 4 - BG Character Data Selection Flag (0=8800h-97FFh, 1=8000h-8FFFh)
+/// Bit 3 - BG Code Area Selection Flag (0=9800h-9BFFh, 1=9C00h-9FFFh)
+/// Bit 2 - Sprite Size (0=8x8, 1=8x16)
+/// Bit 1 - Sprites Enabled (0=Disabled, 1=Enabled)
+/// Bit 0 - BG Enabled (0=Disabled, 1=Enabled)
+/// Note that `BG Enabled` is always set on CGBs.
+/// (Source: GameBoy Programming Manual)
+#[derive(Copy, Clone, Debug, Default)]
+struct LcdControl {
+  register: u8
+}
+
+impl LcdControl {
+  fn enabled(&self) -> bool {
+    util::bit_bool(7, self.register)
+  }
+
+  fn sprite_size(&self) -> u8 {
+    if util::bit(2, self.register) == 0 {
+      8
+    } else {
+      16
+    }
+  }
+
+  fn tileset(&self) -> u8 {
+    util::bit(4, self.register)
+  }
+
+  fn sprites_enabled(&self) -> bool {
+    util::bit_bool(1, self.register)
+  }
+}
+
 pub struct Ppu {
   bad_timer: u64,
-  lcdc: u8,
+  lcdc: LcdControl,
   bg_palette: u8,
   tiles: Vec<[u8; 16]>,
   bg_tile_map: Vec<[u8; 32]>,
   scroll_x: u8,
   scroll_y: u8,
   sprite_attributes: Vec<SpriteAttributeTable>,
-  sprite_palette0: u8,
-  sprite_palette1: u8,
+  sprite_palettes: [u8; 2],
 
   pub screen_buffer: Box<[u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE]>,
   draw_buffer: bool,
@@ -58,6 +78,21 @@ pub struct Ppu {
   tile_data_dirty: bool,
 }
 
+/// OAM Register.
+///
+/// Byte 0x00 - LCD y-coordinate
+/// Byte 0x01 - LCD x-coordinate
+/// Byte 0x02 - CHR (tile) code
+/// Byte 0x03 - Attribute flag
+///
+/// Flags:
+/// Bit 7 - Display priority flag (0=OBJ, 1=BG)
+/// Bit 6 - Vertical flip flag (0=Normal, 1=Flip)
+/// Bit 5 - Horizontal flip flag (0=Normal, 1=Flip)
+/// Bit 4 - Specifies palette
+/// Bit 3 - Specifies character bank (CGB only)
+/// Bits 2:0 - Specifies colour palette (CGB only)
+/// (Source: GameBoy Programming Manual)
 #[derive(Copy, Clone, Debug)]
 struct SpriteAttributeTable {
   y_position: u8,
@@ -66,19 +101,45 @@ struct SpriteAttributeTable {
   flags: u8,
 }
 
+impl SpriteAttributeTable {
+  fn new() -> SpriteAttributeTable {
+    SpriteAttributeTable {
+      y_position: 0,
+      x_position: 0,
+      tile_number: 0,
+      flags: 0,
+    }
+  }
+
+  fn sprite_priority(&self) -> bool {
+    util::bit_bool(7, self.flags)
+  }
+
+  fn vertical_flip(&self) -> bool {
+    util::bit_bool(6, self.flags)
+  }
+
+  fn horizonal_flip(&self) -> bool {
+    util::bit_bool(5, self.flags)
+  }
+
+  fn palette(&self) -> usize {
+    usize::from(util::bit(4, self.flags))
+  }
+}
+
 impl Default for Ppu {
   fn default() -> Ppu {
     Ppu {
       bad_timer: 0,
-      lcdc: 0,
+      lcdc: LcdControl::default(),
       bg_palette: 0,
       tiles: vec![[0; 16]; 384],
       bg_tile_map: vec![[0; 32]; 32],
       scroll_x: 0,
       scroll_y: 0,
       sprite_attributes: vec![SpriteAttributeTable::new(); 40],
-      sprite_palette0: 0,
-      sprite_palette1: 0,
+      sprite_palettes: [0; 2],
       screen_buffer: Box::new([0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE]),
       draw_buffer: false,
       tile_data_dirty: false,
@@ -100,13 +161,6 @@ impl Ppu {
     }
   }
 
-  fn sprite_size(&self) -> u8 {
-    if self.lcdc & LCDC_SPRITE_SIZE == 0 {
-      8
-    } else {
-      16
-    }
-  }
 
   fn draw_line(&mut self, y: u8) {
     // First draw the background
@@ -116,7 +170,7 @@ impl Ppu {
       let bg_x = x.wrapping_add(self.scroll_y);
       let bg_y = y.wrapping_add(self.scroll_x);
       let mut tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize] as usize;
-      if self.lcdc & LCDC_TILE_SELECT == 0 && tile < 0x80 {
+      if self.lcdc.tileset() == 0 && tile < 0x80 {
         tile += 0x100;
       }
       let x_off = bg_x % 8;
@@ -135,25 +189,21 @@ impl Ppu {
     }
 
     // Next draw sprites
-    if self.lcdc & LCDC_SPRITE_ENABLE > 0 {
-      let sprite_height = self.sprite_size();
+    if self.lcdc.sprites_enabled() {
+      let sprite_height = self.lcdc.sprite_size();
       for sprite in self.sprite_attributes.iter() {
         // TODO: Handle other priority.
-        if bit_mask(SPRITE_FLAG_PRIORITY, sprite.flags) {
+        if sprite.sprite_priority() {
           continue;
         }
         if y + 16 < sprite.y_position || y + 16 >= sprite.y_position + sprite_height {
           continue;
         }
         let mut tile_y = (y + 16 - sprite.y_position) % sprite_height;
-        if bit_mask(SPRITE_FLAG_Y_FLIP, sprite.flags) {
+        if sprite.vertical_flip() {
           tile_y = sprite_height - tile_y - 1;
         }
-        let palette: u8 = if !bit_mask(SPRITE_FLAG_PALETTE, sprite.flags) {
-          self.sprite_palette0
-        } else {
-          self.sprite_palette1
-        };
+        let palette = self.sprite_palettes[sprite.palette()];
         let tile = if sprite_height == 16 {
           let top_tile = (sprite.tile_number & !1) as usize;
           if tile_y < 8 {
@@ -172,7 +222,7 @@ impl Ppu {
           0, /* x offset */
           tile_y,
           palette,
-          bit_mask(SPRITE_FLAG_X_FLIP, sprite.flags),
+          sprite.horizonal_flip(),
           true, /* transparent */
           &mut *self.screen_buffer,
         );
@@ -193,7 +243,7 @@ impl Ppu {
         let data0 = self.tiles[tile][ty];
         let data1 = self.tiles[tile][ty + 1];
         for x in 0..8 {
-          let colour_val = (bit(data1, 7 - x) << 1) | bit(data0, 7 - x);
+          let colour_val = (util::bit(7 - x, data1) << 1) | util::bit(7 - x, data0);
           let colour = get_palette_colour(colour_val, self.bg_palette);
           let offset = ((row_y + (ty / 2)) as usize * 128 * PIXEL_SIZE as usize)
             + ((col_x + x as usize) * PIXEL_SIZE);
@@ -208,7 +258,7 @@ impl Ppu {
 
   fn mode(&self) -> Mode {
     // TODO Probably faster to just store the mode and update in tick().
-    if self.lcdc & LCDC_DISPLAY_ENABLE == 0 {
+    if !self.lcdc.enabled() {
       return Mode::HBlank;
     }
     if self.bad_timer > SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
@@ -239,7 +289,7 @@ impl TrapHandler for Ppu {
     }
 
     match addr {
-      0xff40 => Ok(self.lcdc),
+      0xff40 => Ok(self.lcdc.register),
       0xff41 => {
         // STAT
         let val = match self.mode() {
@@ -254,18 +304,19 @@ impl TrapHandler for Ppu {
       0xff43 => Ok(self.scroll_y),
       0xff44 => Ok((self.bad_timer / HORIZONTAL_LINE_CYCLES) as u8),
       0xff47 => Ok(self.bg_palette),
-      0xff48 => Ok(self.sprite_palette0),
-      0xff49 => Ok(self.sprite_palette1),
+      0xff48 => Ok(self.sprite_palettes[0]),
+      0xff49 => Ok(self.sprite_palettes[1]),
       _ => Err(format!("Not implemented: PPU read {:#06x}", addr)),
     }
   }
 
   fn write(&mut self, addr: u16, val: u8) -> Result<(), String> {
     if addr == 0xff40 {
-      if (self.lcdc & (1 << 7) == 0) && (val & (1 << 7) > 0) {
+      let previously_enabled = self.lcdc.enabled();
+      self.lcdc.register = val;
+      if !previously_enabled && self.lcdc.enabled() {
         self.bad_timer = 0;
       }
-      self.lcdc = val;
     } else if addr == 0xff41 {
       println!("write to STAT {:x}", val);
     //unimplemented!("write to stat");
@@ -276,9 +327,9 @@ impl TrapHandler for Ppu {
     } else if addr == 0xff47 {
       self.bg_palette = val;
     } else if addr == 0xff48 {
-      self.sprite_palette0 = val;
+      self.sprite_palettes[0] = val;
     } else if addr == 0xff49 {
-      self.sprite_palette1 = val;
+      self.sprite_palettes[1] = val;
     } else if addr >= 0xff40 {
       //println!("Write to PPU {:#06x} {:#04x}", addr, val);
     } else if addr >= 0x8000 && addr <= 0x97ff {
@@ -303,7 +354,7 @@ impl TrapHandler for Ppu {
   }
 
   fn tick(&mut self, cycles: u16) -> Result<Option<Interrupt>, String> {
-    if self.lcdc & LCDC_DISPLAY_ENABLE == 0 {
+    if !self.lcdc.enabled() {
       return Ok(None);
     }
     let mut interrupt = None;
@@ -328,21 +379,6 @@ impl TrapHandler for Ppu {
 
     Ok(interrupt)
   }
-}
-
-impl SpriteAttributeTable {
-  fn new() -> SpriteAttributeTable {
-    SpriteAttributeTable {
-      y_position: 0,
-      x_position: 0,
-      tile_number: 0,
-      flags: 0,
-    }
-  }
-}
-
-fn bit(v: u8, b: u8) -> u8 {
-  (v & (1 << b)) >> b
 }
 
 fn get_palette_colour(val: u8, palette: u8) -> u32 {
@@ -383,7 +419,7 @@ fn draw_tile_line(
   let data1 = tile[(line << 1) as usize + 1];
   for tile_x in x_off..8 {
     let x_pixel = if flip { tile_x } else { 7 - tile_x };
-    let colour_val = (bit(data1, x_pixel) << 1) | bit(data0, x_pixel);
+    let colour_val = (util::bit(x_pixel, data1) << 1) | util::bit(x_pixel, data0);
     if transparency && colour_val == 0 {
       continue;
     }
