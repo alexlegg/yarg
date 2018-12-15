@@ -35,7 +35,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
   pub fn new(input: Chars<'a>) -> Parser<'a> {
     Parser {
-      ll1: Ll1Parser::new(Lexer::new(input.peekable())).peekable(),
+      ll1: Ll1Parser::new(Lexer::new(input)).peekable(),
       pending_statement: None,
     }
   }

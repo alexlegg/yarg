@@ -158,7 +158,7 @@ impl Assembler {
     Ok(())
   }
 
-  fn encode_jump(&mut self, condition : Condition, target : LabelOrAddress) -> Result<(), String> {
+  fn encode_jump(&mut self, condition: Condition, target: LabelOrAddress) -> Result<(), String> {
     let relative = match target {
       LabelOrAddress::AbsoluteLabel(_) => Ok(false),
       LabelOrAddress::RelativeLabel(_) => Ok(true),
@@ -173,9 +173,9 @@ impl Assembler {
         self.insert(0xc3);
       }
     } else if relative {
-      self.insert(0x28 | encode_condition(condition) << 3);
+      self.insert(0x20 | encode_condition(condition) << 3);
     } else {
-      self.insert(0xca | encode_condition(condition) << 3);
+      self.insert(0xc2 | encode_condition(condition) << 3);
     }
     match target {
       LabelOrAddress::AbsoluteLabel(label) => {
@@ -202,7 +202,7 @@ impl Assembler {
         self.insert(addr);
         Ok(())
       }
-      _ => Err("Unimplemented".to_string())
+      _ => Err("Unimplemented".to_string()),
     }
   }
 

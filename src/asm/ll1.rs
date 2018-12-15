@@ -252,7 +252,7 @@ impl fmt::Display for Ll1ParserError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match &self.actual {
       Some(token) => write!(f, "Expected: {:?}. Actual {:?}", self.expected, token),
-      None => write!(f, "Unexpected end of input"),
+      None => write!(f, "Unexpected end of input, expected {:?}", self.expected),
     }
   }
 }
@@ -342,6 +342,9 @@ impl<I: Iterator<Item = Token>> Iterator for Ll1Parser<I> {
               actual: Some(token),
             }))
           }
+        } else if expected == Token::Newline {
+          // Allow the last newline to be skipped.
+          Some(Ok(Symbol::Terminal(Terminal::Token(Token::Newline))))
         } else {
           Some(Err(Ll1ParserError {
             expected: Symbol::Terminal(Terminal::Token(expected)),
