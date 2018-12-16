@@ -105,6 +105,19 @@ adc a, l
 cp 11
 jp nz, fail
 
+// Test A + d8
+ld a, 2
+adc a, 9
+cp 11
+jp nz, fail
+
+// Test A + d8 + carry
+ld a, 2
+scf
+adc a, 9
+cp 12
+jp nz, fail
+
 // Test carry
 ld a, 0xf0
 ld b, 0x9

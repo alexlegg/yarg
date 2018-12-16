@@ -76,6 +76,34 @@ impl Assembler {
 
   fn encode_operation(&mut self, operation: Operation<LabelOrAddress>) -> Result<(), String> {
     match operation {
+      Operation::AddCarry(operand) => {
+        self.encode_arithmetic(1, &operand);
+      }
+      Operation::Add(operand) => {
+        self.encode_arithmetic(0, &operand);
+      }
+      Operation::And(operand) => {
+        self.encode_arithmetic(4, &operand);
+      }
+      Operation::Compare(operand) => {
+        self.encode_arithmetic(7, &operand);
+      }
+      Operation::SubCarry(operand) => {
+        self.encode_arithmetic(3, &operand);
+      }
+      Operation::Sub(operand) => {
+        self.encode_arithmetic(2, &operand);
+      }
+      Operation::Xor(operand) => {
+        self.encode_arithmetic(5, &operand);
+      }
+      Operation::Or(operand) => {
+        self.encode_arithmetic(6, &operand);
+      }
+
+      Operation::Decrement(LabelOrAddress::Resolved(Address::Register(r))) => {
+        self.insert(0x05 | (encode_reg(r) << 3));
+      }
       Operation::Nop => {
         self.insert(0x00);
       }
@@ -137,25 +165,25 @@ impl Assembler {
         self.insert(0x06 | (encode_reg(dest) << 3));
         self.insert(val);
       }
-      Operation::Decrement(LabelOrAddress::Resolved(Address::Register(r))) => {
-        self.insert(0x05 | (encode_reg(r) << 3));
-      }
-      Operation::AddCarry(LabelOrAddress::Resolved(Address::Register(source))) => {
-        self.insert(0x88 | encode_reg(source));
-      }
-      Operation::Compare(LabelOrAddress::Resolved(Address::Register(source))) => {
-        self.insert(0xb8 | encode_reg(source));
-      }
-      Operation::Compare(LabelOrAddress::Resolved(Address::Data8(source))) => {
-        self.insert(0xfe);
-        self.insert(source);
-      }
       Operation::Jump(condition, address) => self.encode_jump(condition, address)?,
       _ => {
         return Err(format!("Unrecognised operation {:?}", operation));
       }
     }
     Ok(())
+  }
+
+  fn encode_arithmetic(&mut self, alu_index: u8, opcode: &LabelOrAddress) {
+    match opcode {
+      LabelOrAddress::Resolved(Address::Register(source)) => {
+        self.insert(0x80 | alu_index << 3 | encode_reg(*source));
+      }
+      LabelOrAddress::Resolved(Address::Data8(source)) => {
+        self.insert(0xc0 | alu_index << 3 | 0x06);
+        self.insert(*source);
+      }
+      _ => unimplemented!("encode_arithmetic_operand"),
+    }
   }
 
   fn encode_jump(&mut self, condition: Condition, target: LabelOrAddress) -> Result<(), String> {
