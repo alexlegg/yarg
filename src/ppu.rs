@@ -4,7 +4,7 @@ use crate::util;
 
 const SCREEN_WIDTH: u64 = 160;
 const SCREEN_HEIGHT: u64 = 144;
-const PIXEL_SIZE: usize = 3;
+const PIXEL_SIZE: usize = 4;
 
 const OAM_SEARCH_CYCLES: u64 = 20;
 const PIXEL_TRANSFER_CYCLES: u64 = 43;
@@ -458,6 +458,7 @@ fn put_pixel(screen_buffer: &mut [u8], x: u8, y: u8, colour: u32) {
   screen_buffer[offset] = (colour & 0xff) as u8;
   screen_buffer[offset + 1] = ((colour >> 8) & 0xff) as u8;
   screen_buffer[offset + 2] = ((colour >> 16) & 0xff) as u8;
+  screen_buffer[offset + 3] = 0u8;
 }
 
 #[allow(clippy::too_many_arguments)]

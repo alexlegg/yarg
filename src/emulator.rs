@@ -50,7 +50,7 @@ impl Emulator {
     self.cpu.ppu.should_draw()
   }
 
-  pub fn get_tile_data(&mut self) -> Option<Box<[u8; 128 * 192 * 3]>> {
+  pub fn get_tile_data(&mut self) -> Option<Box<[u8; 128 * 192 * 4]>> {
     self.cpu.ppu.get_tile_data()
   }
 

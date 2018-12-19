@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::io::Write;
 use yarg::emulator::Emulator;
-use yarg::sdl;
+use yarg::windows;
 
 fn debugger_cli(bootrom: &Option<Vec<u8>>, rom: &[u8]) -> Result<(), String> {
   // TODO: Add reset logic to Emulator so I don't need to clone here.
@@ -28,7 +28,7 @@ fn debugger_cli(bootrom: &Option<Vec<u8>>, rom: &[u8]) -> Result<(), String> {
             println!("Couldn't parse breakpoint");
           }
           Some("run") | Some("r") => {
-            sdl::init(&mut emu, false);
+            windows::init(&mut emu, false);
           }
           Some("reset") | Some("e") => {
             emu = Emulator::new(bootrom.clone(), rom.to_vec());
@@ -86,6 +86,6 @@ fn main() -> Result<(), String> {
   }
 
   let mut emu = Emulator::new(bootrom, rom);
-  sdl::init(&mut emu, show_vram);
+  windows::init(&mut emu, show_vram);
   Ok(())
 }
