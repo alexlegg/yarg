@@ -12,8 +12,7 @@ use self::winapi::um::winuser::{
   CW_USEDEFAULT, MSG, PM_REMOVE, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSW,
   WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
-use crate::emulator::Emulator;
-use crate::joypad::JoypadInput;
+use crate::editor;
 use direct2d::enums::{AlphaMode, BitmapInterpolationMode, RenderTargetType};
 use direct2d::image::bitmap::BitmapBuilder;
 use direct2d::math::{RectF, SizeU};
@@ -27,6 +26,8 @@ use std::os::windows::ffi::OsStrExt;
 use std::ptr::null_mut;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+use yarg::emulator::Emulator;
+use yarg::joypad::JoypadInput;
 
 static mut GLOBAL_RUNNING: bool = false;
 const KEYDOWN_MASK: SHORT = 0b1 << 15;
@@ -47,10 +48,11 @@ unsafe fn make_joypad_input() -> JoypadInput {
   joypad
 }
 
-pub fn init(emu: &mut Emulator, _show_vram: bool) {
+pub fn init(emu: &mut Emulator, show_vram: bool) {
   let name = win32_string("yarg");
 
   let d2d = direct2d::Factory::new().unwrap();
+  let mut editor = editor::Editor::new(400.0, 10.0);
 
   unsafe {
     let hinstance = GetModuleHandleW(null_mut());
@@ -69,11 +71,20 @@ pub fn init(emu: &mut Emulator, _show_vram: bool) {
 
     RegisterClassW(&wnd_class);
 
-    let mut wnd_rect: windef::RECT = windef::RECT {
-      left: 0,
-      top: 0,
-      right: 320,
-      bottom: 288,
+    let mut wnd_rect: windef::RECT = if !show_vram {
+      windef::RECT {
+        left: 0,
+        top: 0,
+        right: 320,
+        bottom: 288,
+      }
+    } else {
+      windef::RECT {
+        left: 0,
+        top: 0,
+        right: 1024,
+        bottom: 768,
+      }
     };
     AdjustWindowRect(
       &mut wnd_rect,
@@ -148,8 +159,10 @@ pub fn init(emu: &mut Emulator, _show_vram: bool) {
         .with_format(Format::R8G8B8A8Unorm)
         .build()
         .unwrap();
+
       render_target.begin_draw();
-      render_target.clear((0x00_00_00, 0.0));
+      render_target.clear((0x27_28_22, 0.0));
+
       render_target.draw_bitmap(
         &image,
         RectF::new(0f32, 0f32, 320f32, 288f32),
@@ -157,6 +170,9 @@ pub fn init(emu: &mut Emulator, _show_vram: bool) {
         BitmapInterpolationMode::NearestNeighbor,
         RectF::new(0f32, 0f32, 160f32, 144f32),
       );
+
+      editor.draw(&mut render_target);
+
       render_target.end_draw().unwrap();
 
       let duration = Instant::now() - start;

@@ -1,9 +1,11 @@
+pub mod editor;
+pub mod windows;
+
 use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
 use yarg::emulator::Emulator;
-use yarg::windows;
 
 fn debugger_cli(bootrom: &Option<Vec<u8>>, rom: &[u8]) -> Result<(), String> {
   // TODO: Add reset logic to Emulator so I don't need to clone here.

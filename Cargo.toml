@@ -6,7 +6,7 @@ edition = "2018"
 
 [[bin]]
 name = "yarg"
-path = "src/main.rs"
+path = "src/bin/win/main.rs"
 
 [[bin]]
 name = "yargas"
@@ -20,5 +20,6 @@ num-traits = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 direct2d = { version = "0.2" }
+directwrite = { version = "0.1.2" }
 dxgi = { version = "0.1.6" }
 winapi = { version = "0.3", features = ["winuser", "libloaderapi", "memoryapi"] }
