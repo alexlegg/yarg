@@ -10,7 +10,7 @@ path = "src/bin/win/main.rs"
 
 [[bin]]
 name = "yargas"
-path = "src/asm/main.rs"
+path = "src/bin/asm/main.rs"
 
 [dependencies]
 sdl2 = { version = "0.31.0", features = ["bundled"] }
