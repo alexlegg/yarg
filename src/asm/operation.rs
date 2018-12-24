@@ -74,7 +74,7 @@ impl fmt::Debug for Address {
       Address::Data16(d) => write!(f, "${:#06x}", d),
       Address::Immediate(i) => write!(f, "${:#06x}", i),
       Address::Relative(r) | Address::StackRelative(r) => {
-        let e = (*r as i8) + 2;
+        let e = (*r as i8).wrapping_add(2);
         if e > 0 {
           write!(f, "+{:#04x}", e)
         } else {

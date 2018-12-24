@@ -48,11 +48,12 @@ unsafe fn make_joypad_input() -> JoypadInput {
   joypad
 }
 
-pub fn init(emu: &mut Emulator, show_vram: bool) {
+pub fn init(emu: &mut Emulator, rom: Option<Vec<(u16, String)>>) {
   let name = win32_string("yarg");
 
   let d2d = direct2d::Factory::new().unwrap();
-  let mut editor = editor::Editor::new(400.0, 10.0);
+  let debugger = rom.is_some();
+  let mut editor = rom.map(|r| editor::Editor::new(r, 330.0, 5.0, 690.0, 758.0));
 
   unsafe {
     let hinstance = GetModuleHandleW(null_mut());
@@ -71,7 +72,7 @@ pub fn init(emu: &mut Emulator, show_vram: bool) {
 
     RegisterClassW(&wnd_class);
 
-    let mut wnd_rect: windef::RECT = if !show_vram {
+    let mut wnd_rect: windef::RECT = if !debugger {
       windef::RECT {
         left: 0,
         top: 0,
@@ -171,7 +172,15 @@ pub fn init(emu: &mut Emulator, show_vram: bool) {
         RectF::new(0f32, 0f32, 160f32, 144f32),
       );
 
-      editor.draw(&mut render_target);
+      if let Some(e) = &mut editor {
+        if GetAsyncKeyState('J' as i32) & KEYDOWN_MASK != 0 {
+          e.scroll_down();
+        }
+        if GetAsyncKeyState('K' as i32) & KEYDOWN_MASK != 0 {
+          e.scroll_up();
+        }
+        e.draw(&mut render_target);
+      }
 
       render_target.end_draw().unwrap();
 

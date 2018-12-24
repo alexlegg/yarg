@@ -3,60 +3,35 @@ pub mod windows;
 
 use std::env;
 use std::fs;
-use std::io;
-use std::io::Write;
+use yarg::decode;
 use yarg::emulator::Emulator;
 
-fn debugger_cli(bootrom: &Option<Vec<u8>>, rom: &[u8]) -> Result<(), String> {
-  // TODO: Add reset logic to Emulator so I don't need to clone here.
-  let mut emu = Emulator::new(bootrom.clone(), rom.to_vec());
-  loop {
-    print!("> ");
-    let _ = io::stdout().flush();
-
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-      Ok(_) => {
-        let mut iter = input.split_whitespace();
-        match iter.next() {
-          Some("break") | Some("b") => {
-            if let Some(val) = iter.next() {
-              if let Ok(bp) = u16::from_str_radix(val, 16) {
-                println!("Set breakpoint at {:#06x}", bp);
-                emu.add_breakpoint(bp);
-                continue;
-              }
-            }
-            println!("Couldn't parse breakpoint");
-          }
-          Some("run") | Some("r") => {
-            windows::init(&mut emu, false);
-          }
-          Some("reset") | Some("e") => {
-            emu = Emulator::new(bootrom.clone(), rom.to_vec());
-          }
-          Some("quit") | Some("q") => break,
-          _ => println!("Unrecognised command"),
-        }
+fn disassemble_rom(rom: &[u8]) -> Result<Vec<(u16, String)>, String> {
+  let mut disassembled_rom = Vec::new();
+  let mut addr: usize = 0;
+  while addr < 0x7fff {
+    let get_operand = |operand| Ok(rom[addr + operand as usize]);
+    match decode::decode(rom[addr], get_operand) {
+      Ok((size, instr)) => {
+        disassembled_rom.push((addr as u16, format!("{:?}", instr)));
+        addr += size as usize;
       }
-      Err(error) => {
-        println!("error: {}", error);
-        break;
+      _ => {
+        disassembled_rom.push((addr as u16, format!("{:x}", rom[addr])));
+        addr += 1;
       }
     }
   }
-  Ok(())
+  Ok(disassembled_rom)
 }
 
 fn main() -> Result<(), String> {
   let args: Vec<String> = env::args().collect();
-  let mut show_vram: bool = false;
   let mut use_bootrom: bool = false;
   let mut args_processed = 1;
   let mut debugger = false;
   for arg in &args {
     if arg == "-v" {
-      show_vram = true;
       args_processed += 1;
     }
     if arg == "-b" {
@@ -82,12 +57,13 @@ fn main() -> Result<(), String> {
     .ok_or_else(|| "Must specify ROM file".to_string())?;
 
   let rom = fs::read(rom_fn).map_err(|_| "Could not read ROM file".to_string())?;
-
-  if debugger {
-    return debugger_cli(&bootrom, &rom);
-  }
+  let disassembled_rom = if debugger {
+    Some(disassemble_rom(&rom)?)
+  } else {
+    None
+  };
 
   let mut emu = Emulator::new(bootrom, rom);
-  windows::init(&mut emu, show_vram);
+  windows::init(&mut emu, disassembled_rom);
   Ok(())
 }
