@@ -13,7 +13,7 @@ fn disassemble_rom(rom: &[u8]) -> Result<Vec<(u16, String)>, String> {
     let get_operand = |operand| Ok(rom[addr + operand as usize]);
     match decode::decode(rom[addr], get_operand) {
       Ok((size, instr)) => {
-        disassembled_rom.push((addr as u16, format!("{:?}", instr)));
+        disassembled_rom.push((addr as u16, format!("{}", instr)));
         addr += size as usize;
       }
       _ => {

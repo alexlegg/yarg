@@ -8,8 +8,8 @@ use self::winapi::um::libloaderapi::GetModuleHandleW;
 use self::winapi::um::winnt::SHORT;
 use self::winapi::um::winuser::{
   self, AdjustWindowRect, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetAsyncKeyState,
-  GetClientRect, PeekMessageW, RegisterClassW, TranslateMessage, CS_HREDRAW, CS_OWNDC, CS_VREDRAW,
-  CW_USEDEFAULT, MSG, PM_REMOVE, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSW,
+  GetClientRect, LoadCursorW, PeekMessageW, RegisterClassW, TranslateMessage, CS_HREDRAW, CS_OWNDC,
+  CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSW,
   WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 use crate::editor;
@@ -65,7 +65,7 @@ pub fn init(emu: &mut Emulator, rom: Option<Vec<(u16, String)>>) {
       cbClsExtra: 0,
       cbWndExtra: 0,
       hIcon: null_mut(),
-      hCursor: null_mut(),
+      hCursor: LoadCursorW(null_mut(), winuser::IDC_ARROW),
       hbrBackground: null_mut(),
       lpszMenuName: null_mut(),
     };

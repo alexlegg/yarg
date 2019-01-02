@@ -34,9 +34,9 @@ fn interrupt_handler_addr(irq: Interrupt) -> u16 {
 
 pub struct Cpu {
   pub a: u8,
-  pub f: u8,
+  f: u8,
   b: u8,
-  pub c: u8,
+  c: u8,
   d: u8,
   e: u8,
   h: u8,
