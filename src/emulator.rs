@@ -4,6 +4,7 @@ use crate::cpu::Cpu;
 use crate::cpu::Flag;
 use crate::decode;
 use crate::joypad::JoypadInput;
+use bincode;
 use std::collections::VecDeque;
 
 const DEBUG_STREAM_SIZE: usize = 15;
@@ -63,6 +64,15 @@ impl Emulator {
     for (pc, inst) in &self.instruction_stream {
       println!("{:#06x}: {:?}", pc, inst);
     }
+  }
+
+  pub fn save_state(&self) -> Result<Vec<u8>, String> {
+    bincode::serialize(&self.cpu).map_err(|_| "Failed to save state".to_string())
+  }
+
+  pub fn restore_state(&mut self, state: &[u8]) -> Result<(), String> {
+    self.cpu = bincode::deserialize(state).map_err(|_| "Failed to restore state".to_string())?;
+    Ok(())
   }
 }
 

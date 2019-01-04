@@ -9,7 +9,7 @@ use self::winapi::um::winnt::SHORT;
 use self::winapi::um::winuser::{
   self, AdjustWindowRect, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetAsyncKeyState,
   GetClientRect, LoadCursorW, PeekMessageW, RegisterClassW, TranslateMessage, CS_HREDRAW, CS_OWNDC,
-  CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSW,
+  CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, WM_CLOSE, WM_KEYUP, WM_QUIT, WNDCLASSW,
   WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 use crate::editor;
@@ -30,6 +30,7 @@ use yarg::emulator::Emulator;
 use yarg::joypad::JoypadInput;
 
 static mut GLOBAL_RUNNING: bool = false;
+
 const KEYDOWN_MASK: SHORT = 0b1 << 15;
 
 fn win32_string(value: &str) -> Vec<u16> {
@@ -128,16 +129,32 @@ pub fn init(emu: &mut Emulator, rom: Option<Vec<(u16, String)>>) {
 
     let frame_duration = Duration::from_secs(1) / 60;
 
+    let mut savestate: Option<Vec<u8>> = None;
+
     GLOBAL_RUNNING = true;
     while GLOBAL_RUNNING {
-      let mut message: MSG = mem::uninitialized();
-      while PeekMessageW(&mut message, 0 as windef::HWND, 0, 0, PM_REMOVE) != 0 {
-        if message.message == WM_QUIT {
-          GLOBAL_RUNNING = false;
+      let mut msg: MSG = mem::uninitialized();
+      while PeekMessageW(&mut msg, 0 as windef::HWND, 0, 0, PM_REMOVE) != 0 {
+        match msg.message {
+          WM_QUIT => GLOBAL_RUNNING = false,
+          WM_KEYUP => match msg.wParam as i32 {
+            winuser::VK_ESCAPE => GLOBAL_RUNNING = false,
+            winuser::VK_F1 => {
+              savestate = Some(emu.save_state().unwrap());
+            }
+            winuser::VK_F2 => {
+              if let Some(state) = &savestate {
+                emu.restore_state(state).unwrap();
+              }
+            }
+            _ => (),
+          },
+          _ => (),
         }
-        TranslateMessage(&message as *const MSG);
-        DispatchMessageW(&message as *const MSG);
+        TranslateMessage(&msg as *const MSG);
+        DispatchMessageW(&msg as *const MSG);
       }
+
       let joypad = make_joypad_input();
       let start = Instant::now();
       while !emu.should_draw() {
@@ -204,12 +221,6 @@ pub unsafe extern "system" fn windows_proc(
     WM_CLOSE => {
       GLOBAL_RUNNING = false;
     }
-    WM_KEYDOWN => {
-      if wparam == winuser::VK_ESCAPE as usize {
-        GLOBAL_RUNNING = false;
-      }
-    }
-    WM_KEYUP => {}
     _ => return DefWindowProcW(hwnd, msg, wparam, lparam),
   }
   0 as LRESULT

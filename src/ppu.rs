@@ -1,6 +1,7 @@
 use crate::cpu::Interrupt;
 use crate::cpu::TrapHandler;
 use crate::util;
+use serde::{Deserialize, Serialize};
 
 const SCREEN_WIDTH: u64 = 160;
 const SCREEN_HEIGHT: u64 = 144;
@@ -26,7 +27,7 @@ const VERTICAL_LINE_CYCLES: u64 = HORIZONTAL_LINE_CYCLES * (SCREEN_HEIGHT + V_BL
 /// Bit 0 - BG Enabled (0=Disabled, 1=Enabled)
 /// Note that `BG Enabled` is always set on CGBs.
 /// (Source: GameBoy Programming Manual)
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 struct LcdControl {
   register: u8,
 }
@@ -70,7 +71,7 @@ enum Mode {
 /// Bit 2 - Match flag LYC == LCDC LY
 /// Bits 1..0 - Mode
 /// (Source: GameBoy Programming Manual)
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 struct LcdStatus {
   register: u8,
 }
@@ -109,6 +110,7 @@ impl LcdStatus {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Ppu {
   cycles: u64,
   lcdc: LcdControl,
@@ -122,7 +124,7 @@ pub struct Ppu {
   sprite_attributes: Vec<SpriteAttributeTable>,
   sprite_palettes: [u8; 2],
 
-  pub screen_buffer: Box<[u8; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE]>,
+  pub screen_buffer: Vec<u8>, //; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE]>,
   draw_buffer: bool,
 
   tile_data_dirty: bool,
@@ -143,7 +145,7 @@ pub struct Ppu {
 /// Bit 3 - Specifies character bank (CGB only)
 /// Bits 2:0 - Specifies colour palette (CGB only)
 /// (Source: GameBoy Programming Manual)
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 struct SpriteAttributeTable {
   y_position: u8,
   x_position: u8,
@@ -192,7 +194,7 @@ impl Default for Ppu {
       ly_compare: 0,
       sprite_attributes: vec![SpriteAttributeTable::new(); 40],
       sprite_palettes: [0; 2],
-      screen_buffer: Box::new([0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE]),
+      screen_buffer: vec![0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
       draw_buffer: false,
       tile_data_dirty: false,
     }

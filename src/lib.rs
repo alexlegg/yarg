@@ -5,6 +5,5 @@ pub mod decode;
 pub mod emulator;
 pub mod joypad;
 pub mod ppu;
-pub mod sdl;
 pub mod timer;
 pub mod util;

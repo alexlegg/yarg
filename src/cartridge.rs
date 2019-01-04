@@ -1,6 +1,8 @@
 use crate::cpu::Interrupt;
 use crate::cpu::TrapHandler;
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct Cartridge {
   rom: Vec<u8>,
   ram: Vec<u8>,

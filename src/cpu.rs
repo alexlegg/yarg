@@ -4,6 +4,7 @@ use crate::cartridge::Cartridge;
 use crate::joypad::Joypad;
 use crate::ppu::Ppu;
 use crate::timer::Timer;
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Flag {
@@ -13,7 +14,7 @@ pub enum Flag {
   C,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Interrupt {
   Joypad,
   Serial,
@@ -32,6 +33,7 @@ fn interrupt_handler_addr(irq: Interrupt) -> u16 {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Cpu {
   pub a: u8,
   f: u8,
@@ -53,17 +55,22 @@ pub struct Cpu {
   // High RAM: 0xff80 - 0xfffe
   hram: Vec<u8>,
 
+  #[serde(skip)]
   bootrom: Option<Vec<u8>>,
+  #[serde(skip)]
   bootrom_enabled: bool,
 
   pub interrupt_master_enable: bool,
   interrupt_enable: u8,
   interrupt_flag: u8,
 
-  // TODO refactor
   cartridge: Cartridge,
   pub ppu: Ppu,
+
+  #[serde(skip)]
   timer: Timer,
+
+  #[serde(skip)]
   pub joypad: Joypad,
 
   // TODO refactor
