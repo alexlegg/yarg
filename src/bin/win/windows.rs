@@ -20,6 +20,7 @@ use direct2d::render_target::HwndRenderTarget;
 use direct2d::RenderTarget;
 use dxgi::Format;
 use std::ffi::OsStr;
+use std::fs;
 use std::iter::once;
 use std::mem;
 use std::os::windows::ffi::OsStrExt;
@@ -141,10 +142,15 @@ pub fn init(emu: &mut Emulator, rom: Option<Vec<(u16, String)>>) {
             winuser::VK_ESCAPE => GLOBAL_RUNNING = false,
             winuser::VK_F1 => {
               savestate = Some(emu.save_state().unwrap());
+              fs::write("savestate", emu.save_state().unwrap()).unwrap();
             }
             winuser::VK_F2 => {
               if let Some(state) = &savestate {
                 emu.restore_state(state).unwrap();
+              } else {
+                let data = fs::read("savestate").unwrap();
+                savestate = Some(data.clone());
+                emu.restore_state(&data).unwrap();
               }
             }
             _ => (),

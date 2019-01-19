@@ -3,8 +3,8 @@ use crate::cpu::TrapHandler;
 use crate::util;
 use serde::{Deserialize, Serialize};
 
-const SCREEN_WIDTH: u64 = 160;
-const SCREEN_HEIGHT: u64 = 144;
+const SCREEN_WIDTH: usize = 160;
+const SCREEN_HEIGHT: usize = 144;
 const PIXEL_SIZE: usize = 4;
 
 const OAM_SEARCH_CYCLES: u64 = 20;
@@ -13,7 +13,7 @@ const H_BLANK_CYCLES: u64 = 51;
 const HORIZONTAL_LINE_CYCLES: u64 = OAM_SEARCH_CYCLES + PIXEL_TRANSFER_CYCLES + H_BLANK_CYCLES;
 
 const V_BLANK_LINES: u64 = 10;
-const VERTICAL_LINE_CYCLES: u64 = HORIZONTAL_LINE_CYCLES * (SCREEN_HEIGHT + V_BLANK_LINES);
+const VERTICAL_LINE_CYCLES: u64 = HORIZONTAL_LINE_CYCLES * (SCREEN_HEIGHT as u64 + V_BLANK_LINES);
 
 /// LCD Control Register
 ///
@@ -124,7 +124,7 @@ pub struct Ppu {
   sprite_attributes: Vec<SpriteAttributeTable>,
   sprite_palettes: [u8; 2],
 
-  pub screen_buffer: Vec<u8>, //; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * PIXEL_SIZE]>,
+  pub screen_buffer: Vec<u8>,
   draw_buffer: bool,
 
   tile_data_dirty: bool,
@@ -194,7 +194,7 @@ impl Default for Ppu {
       ly_compare: 0,
       sprite_attributes: vec![SpriteAttributeTable::new(); 40],
       sprite_palettes: [0; 2],
-      screen_buffer: vec![0xff; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize * PIXEL_SIZE],
+      screen_buffer: vec![0xff; SCREEN_WIDTH * SCREEN_HEIGHT * PIXEL_SIZE],
       draw_buffer: false,
       tile_data_dirty: false,
     }
@@ -215,40 +215,33 @@ impl Ppu {
     }
   }
 
+  fn get_bg_pixel(&self, x: u8, y: u8) -> u8 {
+    let bg_x = x.wrapping_add(self.scroll_x);
+    let bg_y = y.wrapping_add(self.scroll_y);
+    let mut tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize] as usize;
+    if self.lcdc.tileset() == 0 && tile < 0x80 {
+      tile += 0x100;
+    }
+    let line = bg_y as usize % 8;
+    let tile_x = 7 - (bg_x % 8);
+    let data0 = self.tiles[tile][(line << 1)];
+    let data1 = self.tiles[tile][(line << 1) + 1];
+    (util::bit(tile_x, data1) << 1) | util::bit(tile_x, data0)
+  }
+
   fn draw_line(&mut self, y: u8) {
-    // First draw the background
-    let palette = self.bg_palette;
-    let mut x: u8 = 0;
-    while x < SCREEN_WIDTH as u8 {
-      let bg_x = x.wrapping_add(self.scroll_y);
-      let bg_y = y.wrapping_add(self.scroll_x);
-      let mut tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize] as usize;
-      if self.lcdc.tileset() == 0 && tile < 0x80 {
-        tile += 0x100;
-      }
-      let x_off = bg_x % 8;
-      draw_tile_line(
-        &self.tiles[tile],
-        x as isize,
-        y,
-        x_off,
-        bg_y % 8,
-        palette,
-        false, /* flip */
-        false, /* transparent */
-        &mut *self.screen_buffer,
-      );
-      x += 8 - x_off;
+    // Construct a buffer of background pixel values.
+    let mut buffer = Vec::new();
+    for x in 0..SCREEN_WIDTH {
+      let colour_val = self.get_bg_pixel(x as u8, y);
+      buffer.push((colour_val, self.bg_palette));
     }
 
-    // Next draw sprites
+    // Draw sprites on top.
+    // TODO: Handle priority between sprites (lower x value = higher priority).
     if self.lcdc.sprites_enabled() {
       let sprite_height = self.lcdc.sprite_size();
       for sprite in self.sprite_attributes.iter() {
-        // TODO: Handle other priority.
-        if sprite.sprite_priority() {
-          continue;
-        }
         if y + 16 < sprite.y_position || y + 16 >= sprite.y_position + sprite_height {
           continue;
         }
@@ -256,7 +249,6 @@ impl Ppu {
         if sprite.vertical_flip() {
           tile_y = sprite_height - tile_y - 1;
         }
-        let palette = self.sprite_palettes[sprite.palette()];
         let tile = if sprite_height == 16 {
           let top_tile = (sprite.tile_number & !1) as usize;
           if tile_y < 8 {
@@ -268,18 +260,39 @@ impl Ppu {
         } else {
           &self.tiles[sprite.tile_number as usize]
         };
-        draw_tile_line(
-          tile,
-          sprite.x_position as isize - 8,
-          y,
-          0, /* x offset */
-          tile_y,
-          palette,
-          sprite.horizonal_flip(),
-          true, /* transparent */
-          &mut *self.screen_buffer,
-        );
+        let data0 = tile[(tile_y as usize) << 1];
+        let data1 = tile[((tile_y as usize) << 1) + 1];
+        let palette = self.sprite_palettes[sprite.palette()];
+        let x = sprite.x_position as isize - 8;
+        for tile_x in 0..8 {
+          let screen_x = x + tile_x as isize;
+          if screen_x < 0 {
+            continue;
+          } else if screen_x >= SCREEN_WIDTH as isize {
+            break;
+          }
+          let x_pixel = if sprite.horizonal_flip() {
+            tile_x
+          } else {
+            7 - tile_x
+          };
+          let colour_val = (util::bit(x_pixel, data1) << 1) | util::bit(x_pixel, data0);
+          // Apply transparency.
+          if colour_val == 0 {
+            continue;
+          }
+          // Apply OBJ-to-BG priority.
+          if sprite.sprite_priority() && buffer[screen_x as usize].0 > 0 {
+            continue;
+          }
+          buffer[screen_x as usize] = (colour_val, palette);
+        }
       }
+    }
+
+    for (x, (val, palette)) in buffer.iter().enumerate() {
+      let colour = get_palette_colour(*val, *palette);
+      put_pixel(&mut self.screen_buffer, x, y as usize, colour);
     }
   }
 
@@ -329,8 +342,8 @@ impl TrapHandler for Ppu {
     match addr {
       0xff40 => Ok(self.lcdc.register),
       0xff41 => Ok(self.status.register),
-      0xff42 => Ok(self.scroll_x),
-      0xff43 => Ok(self.scroll_y),
+      0xff42 => Ok(self.scroll_y),
+      0xff43 => Ok(self.scroll_x),
       0xff44 => Ok(self.ly()),
       0xff45 => Ok(self.ly_compare),
       0xff47 => Ok(self.bg_palette),
@@ -350,9 +363,9 @@ impl TrapHandler for Ppu {
     } else if addr == 0xff41 {
       self.status.write(val);
     } else if addr == 0xff42 {
-      self.scroll_x = val;
-    } else if addr == 0xff43 {
       self.scroll_y = val;
+    } else if addr == 0xff43 {
+      self.scroll_x = val;
     } else if addr == 0xff45 {
       self.ly_compare = val;
     } else if addr == 0xff47 {
@@ -395,7 +408,7 @@ impl TrapHandler for Ppu {
       self.cycles %= VERTICAL_LINE_CYCLES;
 
       // Update mode and trigger interrupts.
-      if self.cycles > SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
+      if self.cycles > SCREEN_HEIGHT as u64 * HORIZONTAL_LINE_CYCLES {
         self.status.set_mode(Mode::VBlank);
         if self.status.vblank_interrupt_enabled() {
           interrupt = Some(Interrupt::LCDStat);
@@ -424,13 +437,13 @@ impl TrapHandler for Ppu {
 
       // Draw line on last pixel transfer cycle
       if horizontal_cycles == OAM_SEARCH_CYCLES + PIXEL_TRANSFER_CYCLES - 1
-        && self.cycles < SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES
+        && self.cycles < SCREEN_HEIGHT as u64 * HORIZONTAL_LINE_CYCLES
       {
         let ly = self.ly();
         self.draw_line(ly);
       }
 
-      if self.cycles == SCREEN_HEIGHT * HORIZONTAL_LINE_CYCLES {
+      if self.cycles == SCREEN_HEIGHT as u64 * HORIZONTAL_LINE_CYCLES {
         interrupt = Some(Interrupt::VBlank);
         self.draw_buffer = true;
         self.tile_data_dirty = true;
@@ -454,43 +467,10 @@ fn get_palette_colour(val: u8, palette: u8) -> u32 {
   }
 }
 
-fn put_pixel(screen_buffer: &mut [u8], x: u8, y: u8, colour: u32) {
-  let offset =
-    (y as usize * SCREEN_WIDTH as usize * PIXEL_SIZE as usize) + (x as usize * PIXEL_SIZE);
+fn put_pixel(screen_buffer: &mut [u8], x: usize, y: usize, colour: u32) {
+  let offset = (y * SCREEN_WIDTH * PIXEL_SIZE) + (x * PIXEL_SIZE);
   screen_buffer[offset] = (colour & 0xff) as u8;
   screen_buffer[offset + 1] = ((colour >> 8) & 0xff) as u8;
   screen_buffer[offset + 2] = ((colour >> 16) & 0xff) as u8;
   screen_buffer[offset + 3] = 0u8;
-}
-
-#[allow(clippy::too_many_arguments)]
-// TODO: Take care of this lint
-fn draw_tile_line(
-  tile: &[u8; 16],
-  x: isize,
-  y: u8,
-  x_off: u8,
-  line: u8,
-  palette: u8,
-  flip: bool,
-  transparency: bool,
-  buf: &mut [u8],
-) {
-  let data0 = tile[(line << 1) as usize];
-  let data1 = tile[(line << 1) as usize + 1];
-  for tile_x in x_off..8 {
-    let x_pixel = if flip { tile_x } else { 7 - tile_x };
-    let colour_val = (util::bit(x_pixel, data1) << 1) | util::bit(x_pixel, data0);
-    if transparency && colour_val == 0 {
-      continue;
-    }
-    let colour = get_palette_colour(colour_val, palette);
-    let screen_x = x + tile_x as isize - x_off as isize;
-    if screen_x < 0 {
-      continue;
-    } else if screen_x >= SCREEN_WIDTH as isize {
-      break;
-    }
-    put_pixel(buf, screen_x as u8, y, colour);
-  }
 }
