@@ -37,6 +37,22 @@ impl LcdControl {
     util::bit_bool(7, self.register)
   }
 
+  fn window_tilemap(self) -> u8 {
+    util::bit(6, self.register)
+  }
+
+  fn window_enabled(self) -> bool {
+    util::bit_bool(5, self.register)
+  }
+
+  fn background_tileset(self) -> u8 {
+    util::bit(4, self.register)
+  }
+
+  fn background_tilemap(self) -> u8 {
+    util::bit(3, self.register)
+  }
+
   fn sprite_size(self) -> u8 {
     if util::bit(2, self.register) == 0 {
       8
@@ -45,12 +61,12 @@ impl LcdControl {
     }
   }
 
-  fn tileset(self) -> u8 {
-    util::bit(4, self.register)
-  }
-
   fn sprites_enabled(self) -> bool {
     util::bit_bool(1, self.register)
+  }
+
+  fn background_enabled(self) -> bool {
+    util::bit_bool(0, self.register)
   }
 }
 
@@ -117,9 +133,12 @@ pub struct Ppu {
   status: LcdStatus,
   bg_palette: u8,
   tiles: Vec<[u8; 16]>,
-  bg_tile_map: Vec<[u8; 32]>,
+  tile_map0: Vec<[u8; 32]>,
+  tile_map1: Vec<[u8; 32]>,
   scroll_x: u8,
   scroll_y: u8,
+  window_x: u8,
+  window_y: u8,
   ly_compare: u8,
   sprite_attributes: Vec<SpriteAttributeTable>,
   sprite_palettes: [u8; 2],
@@ -188,9 +207,12 @@ impl Default for Ppu {
       status: LcdStatus::default(),
       bg_palette: 0,
       tiles: vec![[0; 16]; 384],
-      bg_tile_map: vec![[0; 32]; 32],
+      tile_map0: vec![[0; 32]; 32],
+      tile_map1: vec![[0; 32]; 32],
       scroll_x: 0,
       scroll_y: 0,
+      window_x: 0,
+      window_y: 0,
       ly_compare: 0,
       sprite_attributes: vec![SpriteAttributeTable::new(); 40],
       sprite_palettes: [0; 2],
@@ -215,26 +237,47 @@ impl Ppu {
     }
   }
 
-  fn get_bg_pixel(&self, x: u8, y: u8) -> u8 {
-    let bg_x = x.wrapping_add(self.scroll_x);
-    let bg_y = y.wrapping_add(self.scroll_y);
-    let mut tile = self.bg_tile_map[(bg_y >> 3) as usize][(bg_x >> 3) as usize] as usize;
-    if self.lcdc.tileset() == 0 && tile < 0x80 {
+  fn get_bg_pixel(&self, x: u8, y: u8, tile_map: u8, tile_set: u8) -> u8 {
+    let map = if tile_map == 0 { &self.tile_map0 } else { &self.tile_map1 };
+    let mut tile = map[(y >> 3) as usize][(x >> 3) as usize] as usize;
+    if tile_set == 0 && tile < 0x80 {
       tile += 0x100;
     }
-    let line = bg_y as usize % 8;
-    let tile_x = 7 - (bg_x % 8);
+    let line = y as usize % 8;
+    let tile_x = 7 - (x % 8);
     let data0 = self.tiles[tile][(line << 1)];
     let data1 = self.tiles[tile][(line << 1) + 1];
     (util::bit(tile_x, data1) << 1) | util::bit(tile_x, data0)
   }
 
   fn draw_line(&mut self, y: u8) {
-    // Construct a buffer of background pixel values.
-    let mut buffer = Vec::new();
-    for x in 0..SCREEN_WIDTH {
-      let colour_val = self.get_bg_pixel(x as u8, y);
-      buffer.push((colour_val, self.bg_palette));
+    let mut buffer = [(0, 0); SCREEN_WIDTH];
+
+    // Draw background
+    if self.lcdc.background_enabled() {
+      let bg_y = y.wrapping_add(self.scroll_y);
+      for x in 0..SCREEN_WIDTH as u8 {
+        let bg_x = x.wrapping_add(self.scroll_x);
+        let tilemap = self.lcdc.background_tilemap();
+        let tileset = self.lcdc.background_tileset();
+        let colour_val = self.get_bg_pixel(bg_x as u8, bg_y, tilemap, tileset);
+        buffer[x as usize] = (colour_val, self.bg_palette);
+      }
+    }
+
+    // Draw window
+    if self.lcdc.background_enabled() && self.lcdc.window_enabled() {
+      let wy = y as isize - self.window_y as isize;
+      for x in 0..SCREEN_WIDTH as u8 {
+        let wx = x as isize + (self.window_x as isize - 7);
+        if wx < 0 || wx >= SCREEN_WIDTH as isize || wy < 0 {
+          continue
+        }
+        let tilemap = self.lcdc.window_tilemap();
+        let tileset = self.lcdc.background_tileset();
+        let colour_val = self.get_bg_pixel(x, wy as u8, tilemap, tileset);
+        buffer[wx as usize] = (colour_val, self.bg_palette);
+      }
     }
 
     // Draw sprites on top.
@@ -336,7 +379,11 @@ impl TrapHandler for Ppu {
     } else if addr >= 0x9800 && addr <= 0x9bff {
       let row = ((addr - 0x9800) >> 5) as usize;
       let col = ((addr - 0x9800) % 32) as usize;
-      return Ok(self.bg_tile_map[row][col]);
+      return Ok(self.tile_map0[row][col]);
+    } else if addr >= 0x9c00 && addr <= 0x9fff {
+      let row = ((addr - 0x9c00) >> 5) as usize;
+      let col = ((addr - 0x9c00) % 32) as usize;
+      return Ok(self.tile_map1[row][col]);
     }
 
     match addr {
@@ -349,6 +396,8 @@ impl TrapHandler for Ppu {
       0xff47 => Ok(self.bg_palette),
       0xff48 => Ok(self.sprite_palettes[0]),
       0xff49 => Ok(self.sprite_palettes[1]),
+      0xff4a => Ok(self.window_y),
+      0xff4b => Ok(self.window_x),
       _ => Err(format!("Not implemented: PPU read {:#06x}", addr)),
     }
   }
@@ -374,6 +423,10 @@ impl TrapHandler for Ppu {
       self.sprite_palettes[0] = val;
     } else if addr == 0xff49 {
       self.sprite_palettes[1] = val;
+    } else if addr == 0xff4a {
+      self.window_y = val;
+    } else if addr == 0xff4b {
+      self.window_x = val;
     } else if addr >= 0xff40 {
       //println!("Write to PPU {:#06x} {:#04x}", addr, val);
     } else if addr >= 0x8000 && addr <= 0x97ff {
@@ -383,7 +436,11 @@ impl TrapHandler for Ppu {
     } else if addr >= 0x9800 && addr <= 0x9bff {
       let row = ((addr - 0x9800) >> 5) as usize;
       let col = ((addr - 0x9800) % 32) as usize;
-      self.bg_tile_map[row][col] = val;
+      self.tile_map0[row][col] = val;
+    } else if addr >= 0x9c00 && addr <= 0x9fff {
+      let row = ((addr - 0x9c00) >> 5) as usize;
+      let col = ((addr - 0x9c00) % 32) as usize;
+      self.tile_map1[row][col] = val;
     } else if addr >= 0xfe00 && addr <= 0xfe9f {
       let sprite = (addr as usize - 0xfe00) / 4;
       match (addr - 0xfe00) % 4 {
